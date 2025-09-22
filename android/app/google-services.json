@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "322776951600",
+    "project_id": "haseela-95ea5",
+    "storage_bucket": "haseela-95ea5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:322776951600:android:7328b6fca2ffa7ebf5f6f5",
+        "android_client_info": {
+          "package_name": "com.example.haseela_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL90dIxi5ec46mz7s5miEAMQ5z6_P80YU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:322776951600:android:33057a018d814926f5f6f5",
+        "android_client_info": {
+          "package_name": "com.example.haseelaapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL90dIxi5ec46mz7s5miEAMQ5z6_P80YU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:322776951600:android:382de3b15f853287f5f6f5",
+        "android_client_info": {
+          "package_name": "com.haseela.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL90dIxi5ec46mz7s5miEAMQ5z6_P80YU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

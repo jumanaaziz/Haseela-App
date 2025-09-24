@@ -116,13 +116,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
           bottom: false,
           child: Row(
             children: [
-              Padding(
-                padding: EdgeInsets.only(left: 16.w),
-                child: Text(
-                  'Projects',
-                  style: TextStyle(color: Colors.grey, fontSize: 14.sp),
-                ),
-              ),
+              Padding(padding: EdgeInsets.only(left: 16.w)),
               const Spacer(),
               Text(
                 'Tasks',

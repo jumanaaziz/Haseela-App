@@ -243,8 +243,14 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
                         controller: _allowanceController,
                         hintText: '0.00',
                         keyboardType: TextInputType.number,
-                        prefix: const _RiyalPrefix(),
+                        prefix: const _RiyalSuffix(),
                         errorText: _allowanceError,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d{0,2}'),
+                          ), // only numbers + 2 decimals
+                          PositiveNumberFormatter(), // ✅ block negatives
+                        ],
                       ),
 
                       SizedBox(height: 24.h),
@@ -553,21 +559,36 @@ class _DateBox extends StatelessWidget {
   }
 }
 
-class _RiyalPrefix extends StatelessWidget {
-  const _RiyalPrefix();
+class _RiyalSuffix extends StatelessWidget {
+  const _RiyalSuffix();
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(left: 12.w, right: 6.w),
-      child: Text(
-        '﷼',
-        style: TextStyle(
-          fontSize: 18.sp,
-          fontWeight: FontWeight.w700,
-          color: const Color(0xFF6B7280),
-        ),
+      padding: EdgeInsets.only(right: 5.w),
+      child: Image.asset(
+        'assets/icons/riyal.png',
+        width: 5.w,
+        height: 5.w,
+        fit: BoxFit.contain,
+        color: const Color(0xFF6B7280), // optional tint
       ),
     );
+  }
+}
+
+class PositiveNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) return newValue;
+
+    final value = double.tryParse(newValue.text);
+    if (value == null || value < 0) {
+      return oldValue; // ❌ reject invalid or negative input
+    }
+    return newValue;
   }
 }

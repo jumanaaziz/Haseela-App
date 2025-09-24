@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'firebase_options.dart';
+import 'task_management_screen.dart';
+import 'services/seed_data.dart';
 
 Future<void> main() async {
   // IMPORTANT!! Firebase code don't mess with it

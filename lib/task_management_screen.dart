@@ -563,12 +563,6 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: CustomBottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() => _currentIndex = index);
-        },
-      ),
     );
   }
 }

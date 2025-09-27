@@ -15,6 +15,12 @@ class FirestoreSeeder {
       "createdAt": FieldValue.serverTimestamp(),
     });
 
+    // ✅ Optionally verify parent exists
+    final parentSnap = await parentRef.get();
+    if (!parentSnap.exists) {
+      throw Exception("❌ Parent document not created properly.");
+    }
+
     // 2. Children data
     final children = [
       {
@@ -47,10 +53,16 @@ class FirestoreSeeder {
         "email": child["email"],
         "QR": "",
         "avatar": "",
-        "parent": parentRef.path,
+        "parent": parentRef, // ✅ store as DocumentReference
         "password": "",
         "createdAt": FieldValue.serverTimestamp(),
       });
+
+      // ✅ Optionally verify child exists
+      final childSnap = await childRef.get();
+      if (!childSnap.exists) {
+        throw Exception("❌ Child ${child['id']} was not created properly.");
+      }
 
       // 4. Add two dummy tasks for each child
       await childRef.collection("Tasks").doc("task1").set({
@@ -58,7 +70,7 @@ class FirestoreSeeder {
         "allowance": 20,
         "status": "pending",
         "priority": "High",
-        "assignedBy": parentRef.path,
+        "assignedBy": parentRef, // ✅ store as DocumentReference
         "createdAt": FieldValue.serverTimestamp(),
         "dueDate": DateTime.now().add(const Duration(days: 2)),
       });
@@ -68,7 +80,7 @@ class FirestoreSeeder {
         "allowance": 10,
         "status": "completed",
         "priority": "Low",
-        "assignedBy": parentRef.path,
+        "assignedBy": parentRef, // ✅ store as DocumentReference
         "createdAt": FieldValue.serverTimestamp(),
         "dueDate": DateTime.now().add(const Duration(days: 1)),
       });
@@ -80,7 +92,7 @@ class FirestoreSeeder {
           "allowance": 15,
           "status": "pending",
           "priority": "Normal",
-          "assignedBy": parentRef.path,
+          "assignedBy": parentRef, // ✅ reference again
           "createdAt": FieldValue.serverTimestamp(),
           "dueDate": DateTime.now().add(const Duration(days: 3)),
         });

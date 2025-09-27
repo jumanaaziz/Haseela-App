@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'task_model.dart'; // <-- Task, TaskPriority, TaskStatus
+import 'models/child.dart'; // <-- Task, TaskPriority, TaskStatus
+import 'models/task.dart';
 import 'models/child_options.dart'; // <-- ChildOption model
 
 class AssignTaskScreen extends StatefulWidget {
@@ -13,6 +14,26 @@ class AssignTaskScreen extends StatefulWidget {
 }
 
 class _AssignTaskScreenState extends State<AssignTaskScreen> {
+  void _showError(String message) {
+    if (!context.mounted) return; // ✅ this works in modern Flutter
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFFF6A5D),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+  }
+
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _allowanceController = TextEditingController();
 
@@ -285,8 +306,8 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
     );
   }
 
-  void _handleSubmit() {
-    // Reset errors
+  Future<void> _handleSubmit() async {
+    // Reset validation errors
     setState(() {
       _formError = null;
       _nameError = null;
@@ -297,27 +318,20 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
     });
 
     final trimmedName = _nameController.text.trim();
-    if (trimmedName.isEmpty) {
-      _nameError = 'Please enter a task name';
-    } else if (trimmedName.length > 40) {
-      _nameError = 'Task name must be at most 40 characters';
-    }
-
-    if (_selectedChildId == null) {
-      _childError = 'Please select a child';
-    }
-    if (_toDate == null) {
-      _dateError = 'Please select an end date';
-    }
-    if (_priority == null) {
-      _priorityError = 'Please choose a priority';
-    }
+    if (trimmedName.isEmpty) _nameError = 'Please enter a task name';
+    if (_selectedChildId == null) _childError = 'Please select a child';
+    if (_toDate == null) _dateError = 'Please select an end date';
+    if (_priority == null) _priorityError = 'Please choose a priority';
 
     final allowanceText = _allowanceController.text.trim();
+    double? allowance;
     if (allowanceText.isEmpty) {
       _allowanceError = 'Please enter an allowance amount';
-    } else if (double.tryParse(allowanceText) == null) {
-      _allowanceError = 'Allowance must be a valid number';
+    } else {
+      allowance = double.tryParse(allowanceText);
+      if (allowance == null) {
+        _allowanceError = 'Allowance must be a valid number';
+      }
     }
 
     final hasErrors = [
@@ -335,27 +349,47 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
       return;
     }
 
-    // Create task
-    final child = _children.firstWhere((c) => c.id == _selectedChildId!);
-    final task = Task(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: trimmedName,
-      deadline: _toDate!,
-      priority: _priority!,
-      status: TaskStatus.incomplete,
-      assignedTo: child.firstName,
-    );
+    try {
+      final parentId = "parent001"; // ✅ Replace with actual logged-in parent ID
+      final parentRef = FirebaseFirestore.instance
+          .collection('Parents')
+          .doc(parentId);
 
-    Navigator.pop(context, task);
-  }
+      // ✅ Get the selected child (using your new Child model)
+      final childSnapshot = await parentRef
+          .collection('Children')
+          .doc(_selectedChildId!)
+          .get();
+      final child = Child.fromFirestore(childSnapshot);
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFFFF6A5D),
-      ),
-    );
+      // ✅ Generate new task ID
+      final taskDoc = parentRef
+          .collection('Children')
+          .doc(child.id)
+          .collection('Tasks')
+          .doc();
+
+      final taskData = {
+        'taskName': trimmedName,
+        'allowance': allowance,
+        'status': 'new', // matches TaskStatus.newTask
+        'priority': _priority.toString().split('.').last.toLowerCase(),
+        'dueDate': _toDate,
+        'createdAt': FieldValue.serverTimestamp(),
+        'assignedBy': parentRef,
+      };
+
+      print('Saving task data: $taskData');
+      await taskDoc.set(taskData);
+      print('Task saved successfully with ID: ${taskDoc.id}');
+
+      // ✅ Task saved successfully, return to previous screen
+      Navigator.pop(context);
+    } catch (e) {
+      print('Error details: $e');
+      print('Error type: ${e.runtimeType}');
+      _showError("Error assigning task: $e");
+    }
   }
 
   Future<DateTime?> _pickDate(BuildContext context, {DateTime? initial}) async {

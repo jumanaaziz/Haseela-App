@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import '../task_model.dart';
+import '../models/task.dart';
 
 class TaskCard extends StatelessWidget {
   final Task task;
@@ -34,7 +34,7 @@ class TaskCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    task.title,
+                    task.taskName,
                     style: TextStyle(
                       fontSize: 16.sp,
                       fontWeight: FontWeight.w600,
@@ -56,7 +56,7 @@ class TaskCard extends StatelessWidget {
                           ),
                           SizedBox(width: 4.w),
                           Text(
-                            'Deadline ${_formatDate(task.deadline)}',
+                            'Deadline ${_formatDate(task.dueDate ?? DateTime.now())}',
                             style: TextStyle(
                               fontSize: 14.sp,
                               color: const Color(0xFF7C3AED),
@@ -71,14 +71,14 @@ class TaskCard extends StatelessWidget {
                           Icon(
                             Icons.flag,
                             size: 16.sp,
-                            color: _getPriorityColor(task.priority),
+                            color: _getPriorityColorFromString(task.priority),
                           ),
                           SizedBox(width: 4.w),
                           Text(
-                            'Priority ${_getPriorityText(task.priority)}',
+                            'Priority ${_getPriorityTextFromString(task.priority)}',
                             style: TextStyle(
                               fontSize: 14.sp,
-                              color: _getPriorityColor(task.priority),
+                              color: _getPriorityColorFromString(task.priority),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -99,15 +99,11 @@ class TaskCard extends StatelessWidget {
                     vertical: 6.h,
                   ),
                   decoration: BoxDecoration(
-                    color: task.status == TaskStatus.completed
-                        ? Colors.green
-                        : Colors.red,
+                    color: _getStatusColor(task.taskStatus),
                     borderRadius: BorderRadius.circular(16.r),
                   ),
                   child: Text(
-                    task.status == TaskStatus.completed
-                        ? 'Completed'
-                        : 'Incomplete',
+                    _getStatusText(task.taskStatus),
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 12.sp,
@@ -133,25 +129,53 @@ class TaskCard extends StatelessWidget {
   static String _formatDate(DateTime date) =>
       '${date.day}/${date.month}/${date.year}';
 
-  static Color _getPriorityColor(TaskPriority priority) {
-    switch (priority) {
-      case TaskPriority.low:
+  static Color _getPriorityColorFromString(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'low':
         return Colors.orange[300]!;
-      case TaskPriority.normal:
+      case 'normal':
+      case 'medium':
         return Colors.orange[500]!;
-      case TaskPriority.high:
+      case 'high':
         return Colors.orange[700]!;
+      default:
+        return Colors.orange[500]!;
     }
   }
 
-  static String _getPriorityText(TaskPriority priority) {
-    switch (priority) {
-      case TaskPriority.low:
+  static String _getPriorityTextFromString(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'low':
         return 'Low';
-      case TaskPriority.normal:
+      case 'normal':
+      case 'medium':
         return 'Normal';
-      case TaskPriority.high:
+      case 'high':
         return 'High';
+      default:
+        return 'Normal';
+    }
+  }
+
+  static Color _getStatusColor(TaskStatus status) {
+    switch (status) {
+      case TaskStatus.newTask:
+        return Colors.blue;
+      case TaskStatus.pending:
+        return Colors.orange;
+      case TaskStatus.done:
+        return Colors.green;
+    }
+  }
+
+  static String _getStatusText(TaskStatus status) {
+    switch (status) {
+      case TaskStatus.newTask:
+        return 'New';
+      case TaskStatus.pending:
+        return 'Pending';
+      case TaskStatus.done:
+        return 'Approved';
     }
   }
 }

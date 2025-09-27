@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:toastification/toastification.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'task_model.dart';
+import 'models/task.dart';
 import 'assign_task_screen.dart';
 import 'models/child_options.dart';
 import 'task_card.dart';
@@ -19,6 +19,15 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
   String selectedUserId = '';
   List<ChildOption> _children = [];
   int _currentIndex = 1;
+  String selectedStatusFilter = 'All'; // Default to show all tasks
+
+  // Available status filter options
+  final List<String> _statusFilterOptions = [
+    'All',
+    'New',
+    'Pending',
+    'Approved',
+  ];
 
   @override
   void initState() {
@@ -26,6 +35,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     _loadChildren();
   }
 
+  /// ✅ Load children for parent
   Future<void> _loadChildren() async {
     final snap = await FirebaseFirestore.instance
         .collection("Parents")
@@ -45,26 +55,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     });
   }
 
-  Future<void> _addTask(Task task) async {
-    if (selectedUserId.isEmpty) return;
-
-    final taskRef = FirebaseFirestore.instance
-        .collection("Parents")
-        .doc("parent001")
-        .collection("Children")
-        .doc(selectedUserId)
-        .collection("Tasks")
-        .doc(task.id);
-
-    await taskRef.set({
-      "taskName": task.title,
-      "dueDate": task.deadline,
-      "priority": task.priority.name,
-      "status": task.status.name,
-      "assignedBy": "parent001",
-    });
-  }
-
+  /// ✅ Delete task
   Future<void> _deleteTask(String taskId) async {
     await FirebaseFirestore.instance
         .collection("Parents")
@@ -76,6 +67,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
         .delete();
   }
 
+  /// ✅ Confirm delete dialog
   Future<bool> _confirmDelete(BuildContext context) async {
     final result = await showDialog<bool>(
       context: context,
@@ -101,6 +93,42 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
       },
     );
     return result ?? false;
+  }
+
+  /// ✅ Filter tasks based on selected status
+  List<Task> _filterTasksByStatus(List<Task> tasks) {
+    if (selectedStatusFilter == 'All') {
+      return tasks;
+    }
+
+    return tasks.where((task) {
+      switch (selectedStatusFilter) {
+        case 'New':
+          return task.taskStatus == TaskStatus.newTask;
+        case 'Pending':
+          return task.taskStatus == TaskStatus.pending;
+        case 'Approved':
+          return task.taskStatus == TaskStatus.done;
+        default:
+          return true;
+      }
+    }).toList();
+  }
+
+  /// ✅ Get color for status indicator in dropdown
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'All':
+        return Colors.grey[400]!;
+      case 'New':
+        return Colors.blue;
+      case 'Pending':
+        return Colors.orange;
+      case 'Approved':
+        return Colors.green;
+      default:
+        return Colors.grey[400]!;
+    }
   }
 
   @override
@@ -135,15 +163,13 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                 ),
                 child: IconButton(
                   onPressed: () async {
-                    final task = await Navigator.push<Task>(
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const AssignTaskScreen(),
                       ),
                     );
-                    if (task != null) {
-                      await _addTask(task);
-                    }
+                    // Task is already saved in AssignTaskScreen, StreamBuilder will auto-update
                   },
                   icon: Icon(Icons.add, color: Colors.white, size: 22.sp),
                 ),
@@ -155,7 +181,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Child filter row
+            // 👶 Child filter row
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
               child: SingleChildScrollView(
@@ -167,6 +193,9 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                       margin: EdgeInsets.only(right: 8.w),
                       child: ElevatedButton(
                         onPressed: () {
+                          print(
+                            'Selected child: ${child.firstName} with ID: ${child.id}',
+                          );
                           setState(() {
                             selectedUserId = child.id;
                           });
@@ -207,7 +236,100 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
               ),
             ),
 
-            // Task List
+            // 🔍 Status Filter Button
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6), // Light purple background
+                  borderRadius: BorderRadius.circular(20.r),
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: selectedStatusFilter,
+                    isExpanded: true,
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: const Color(0xFF7C3AED),
+                      size: 20.sp,
+                    ),
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: const Color(0xFF7C3AED),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    selectedItemBuilder: (BuildContext context) {
+                      return _statusFilterOptions.map((String status) {
+                        return Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16.w,
+                            vertical: 12.h,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.filter_list,
+                                color: const Color(0xFF7C3AED),
+                                size: 16.sp,
+                              ),
+                              SizedBox(width: 8.w),
+                              Text(
+                                'Filter',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF7C3AED),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList();
+                    },
+                    items: _statusFilterOptions.map((String status) {
+                      return DropdownMenuItem<String>(
+                        value: status,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16.w,
+                            vertical: 12.h,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.filter_list,
+                                color: _getStatusColor(status),
+                                size: 16.sp,
+                              ),
+                              SizedBox(width: 8.w),
+                              Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color: const Color(0xFF374151),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          selectedStatusFilter = newValue;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ),
+
+            // 📋 Task List
             Expanded(
               child: selectedUserId.isEmpty
                   ? Center(
@@ -225,18 +347,40 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                           .collection("Tasks")
                           .snapshots(),
                       builder: (context, snapshot) {
+                        print(
+                          'StreamBuilder - selectedUserId: $selectedUserId',
+                        );
+                        print(
+                          'StreamBuilder - snapshot.hasError: ${snapshot.hasError}',
+                        );
+                        if (snapshot.hasError) {
+                          print('StreamBuilder - Error: ${snapshot.error}');
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  color: Colors.red,
+                                  size: 48.sp,
+                                ),
+                                SizedBox(height: 16.h),
+                                Text(
+                                  'Error loading tasks: ${snapshot.error}',
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    color: Colors.red,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          );
+                        }
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
                           return const Center(
                             child: CircularProgressIndicator(),
-                          );
-                        }
-                        if (snapshot.hasError) {
-                          return Center(
-                            child: Text(
-                              "Error: ${snapshot.error}",
-                              style: TextStyle(fontSize: 14.sp),
-                            ),
                           );
                         }
 
@@ -250,30 +394,99 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                           );
                         }
 
-                        final tasks = docs.map((doc) {
+                        final allTasks = docs.map((doc) {
                           final data = doc.data() as Map<String, dynamic>;
+
+                          // Debug: Print the actual data to see what's causing the issue
+                          print('Task data for ${doc.id}: $data');
+
+                          // Handle assignedBy field - can be DocumentReference or String
+                          DocumentReference assignedByRef;
+                          if (data['assignedBy'] is DocumentReference) {
+                            assignedByRef =
+                                data['assignedBy'] as DocumentReference;
+                          } else if (data['assignedBy'] is String) {
+                            final assignedByPath = data['assignedBy'] as String;
+                            // Validate the path before creating DocumentReference
+                            if (assignedByPath.isNotEmpty &&
+                                assignedByPath.contains('/')) {
+                              try {
+                                assignedByRef = FirebaseFirestore.instance.doc(
+                                  assignedByPath,
+                                );
+                              } catch (e) {
+                                print(
+                                  'Invalid assignedBy path: $assignedByPath, error: $e',
+                                );
+                                assignedByRef = FirebaseFirestore.instance
+                                    .collection('Parents')
+                                    .doc('parent001');
+                              }
+                            } else {
+                              assignedByRef = FirebaseFirestore.instance
+                                  .collection('Parents')
+                                  .doc('parent001');
+                            }
+                          } else {
+                            assignedByRef = FirebaseFirestore.instance
+                                .collection('Parents')
+                                .doc('parent001');
+                          }
+
                           return Task(
                             id: doc.id,
-                            title: data['taskName'] ?? '',
-                            deadline: (data['dueDate'] != null)
+                            taskName: data['taskName'] ?? '',
+                            allowance: (data['allowance'] ?? 0).toDouble(),
+                            status: Task.normalizeStatus(data['status']),
+                            priority: data['priority'] ?? 'normal',
+                            dueDate: data['dueDate'] != null
                                 ? (data['dueDate'] as Timestamp).toDate()
+                                : null,
+                            createdAt: data['createdAt'] != null
+                                ? (data['createdAt'] as Timestamp).toDate()
                                 : DateTime.now(),
-                            priority: TaskPriority.values.firstWhere(
-                              (e) =>
-                                  e.name.toLowerCase() ==
-                                  (data['priority'] ?? 'normal').toLowerCase(),
-                              orElse: () => TaskPriority.normal,
-                            ),
-                            status: TaskStatus.values.firstWhere(
-                              (e) =>
-                                  e.name.toLowerCase() ==
-                                  (data['status'] ?? 'incomplete')
-                                      .toLowerCase(),
-                              orElse: () => TaskStatus.incomplete,
-                            ),
-                            assignedTo: data['assignedBy'] ?? '',
+                            completedDate: data['completedDate'] != null
+                                ? (data['completedDate'] as Timestamp).toDate()
+                                : null,
+                            assignedBy: assignedByRef,
+                            completedImagePath: data['completedImagePath'],
                           );
                         }).toList();
+
+                        // Apply status filter
+                        final tasks = _filterTasksByStatus(allTasks);
+
+                        // Show message if no tasks match the filter
+                        if (tasks.isEmpty && allTasks.isNotEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.filter_list,
+                                  color: Colors.grey[400],
+                                  size: 48.sp,
+                                ),
+                                SizedBox(height: 16.h),
+                                Text(
+                                  'No tasks with "$selectedStatusFilter" status',
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                SizedBox(height: 8.h),
+                                Text(
+                                  'Try selecting a different filter',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
 
                         return Column(
                           children: [

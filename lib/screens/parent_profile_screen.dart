@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:toastification/toastification.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+
 import '../models/parent_profile.dart';
 import '../models/child_options.dart';
 
@@ -25,8 +26,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
   final _lastNameController = TextEditingController();
   final _passwordController = TextEditingController();
   File? _selectedImage;
-  
-  // Field validation errors
+
   Map<String, String?> _fieldErrors = {};
 
   @override
@@ -133,7 +133,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         maxHeight: 512,
         imageQuality: 80,
       );
-      
+
       if (image != null) {
         setState(() {
           _selectedImage = File(image.path);
@@ -146,7 +146,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
 
   void _validateField(String fieldType, String value) {
     String? errorMessage;
-    
+
     switch (fieldType) {
       case 'firstName':
         errorMessage = ParentProfile.validateFirstName(value);
@@ -158,7 +158,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         errorMessage = ParentProfile.validatePassword(value);
         break;
     }
-    
+
     setState(() {
       _fieldErrors[fieldType] = errorMessage;
     });
@@ -176,25 +176,29 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Responsive breakpoints
+    final isTablet = MediaQuery.of(context).size.width >= 600;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Status bar space
-              SizedBox(height: 20.h),
-              
-              // Profile Section
-              if (_parentProfile != null) _buildProfileSection(),
-              
-              SizedBox(height: 20.h),
-              
-              // Children Section
-              _buildChildrenSection(),
-            ],
+          padding: EdgeInsets.symmetric(
+            horizontal: isTablet ? 32.w : 16.w,
+            vertical: 20.h,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isTablet ? 600.w : double.infinity,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_parentProfile != null) _buildProfileSection(),
+                SizedBox(height: 24.h),
+                _buildChildrenSection(),
+              ],
+            ),
           ),
         ),
       ),
@@ -213,86 +217,53 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
       ),
       child: Column(
         children: [
-          // Header with greeting and expand/collapse
           Padding(
             padding: EdgeInsets.all(20.w),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 GestureDetector(
                   onTap: _isEditing ? _pickImage : null,
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 25.r,
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        backgroundImage: _selectedImage != null 
-                            ? FileImage(_selectedImage!)
-                            : (_parentProfile?.avatar != null 
-                                ? NetworkImage(_parentProfile!.avatar!)
-                                : null),
-                        child: _selectedImage == null && (_parentProfile?.avatar == null)
-                            ? Icon(
-                                Icons.person,
-                                color: Colors.white,
-                                size: 30.sp,
-                              )
-                            : null,
-                      ),
-                      if (_isEditing)
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            width: 20.w,
-                            height: 20.h,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFF8B5CF6), width: 2),
-                            ),
-                            child: Icon(
-                              Icons.edit,
-                              color: const Color(0xFF8B5CF6),
-                              size: 12.sp,
-                            ),
-                          ),
-                        ),
-                    ],
+                  child: CircleAvatar(
+                    radius: 30.r,
+                    backgroundColor: Colors.white.withOpacity(0.2),
+                    backgroundImage: _selectedImage != null
+                        ? FileImage(_selectedImage!)
+                        : (_parentProfile?.avatar != null
+                                  ? NetworkImage(_parentProfile!.avatar!)
+                                  : null)
+                              as ImageProvider<Object>?,
+                    child:
+                        _selectedImage == null && _parentProfile?.avatar == null
+                        ? Icon(Icons.person, color: Colors.white, size: 30.sp)
+                        : null,
                   ),
                 ),
                 SizedBox(width: 12.w),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello, ${_parentProfile!.firstName}!',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20.sp,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Hello, ${_parentProfile!.firstName}!',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isExpanded = !_isExpanded;
-                    });
-                  },
-                  child: Icon(
-                    _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                IconButton(
+                  icon: Icon(
+                    _isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
                     color: Colors.white,
-                    size: 24.sp,
+                    size: 28.sp,
                   ),
+                  onPressed: () => setState(() => _isExpanded = !_isExpanded),
                 ),
               ],
             ),
           ),
-          
-          // Expandable profile information
           if (_isExpanded) _buildProfileInformation(),
         ],
       ),
@@ -300,7 +271,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
   }
 
   Widget _buildProfileInformation() {
-    return Container(
+    return Padding(
       padding: EdgeInsets.all(20.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,45 +288,18 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                 ),
               ),
               if (!_isEditing)
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isEditing = true;
-                    });
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(15.r),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.edit,
-                          color: Colors.white,
-                          size: 16.sp,
-                        ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          'Edit',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                TextButton.icon(
+                  onPressed: () => setState(() => _isEditing = true),
+                  icon: Icon(Icons.edit, color: Colors.white, size: 16.sp),
+                  label: Text(
+                    'Edit',
+                    style: TextStyle(color: Colors.white, fontSize: 12.sp),
                   ),
                 ),
             ],
           ),
-          
           SizedBox(height: 16.h),
-          
-          if (_isEditing) _buildEditForm() else _buildProfileDetails(),
+          _isEditing ? _buildEditForm() : _buildProfileDetails(),
         ],
       ),
     );
@@ -375,7 +319,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 12.h),
+      padding: EdgeInsets.only(bottom: 10.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -413,54 +357,44 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
             controller: _firstNameController,
             label: 'First Name',
             validator: ParentProfile.validateFirstName,
-            onChanged: (value) => _validateField('firstName', value),
+            onChanged: (v) => _validateField('firstName', v),
             fieldType: 'firstName',
-            keyboardType: TextInputType.name,
           ),
           _buildTextField(
             controller: _lastNameController,
             label: 'Last Name',
             validator: ParentProfile.validateLastName,
-            onChanged: (value) => _validateField('lastName', value),
+            onChanged: (v) => _validateField('lastName', v),
             fieldType: 'lastName',
-            keyboardType: TextInputType.name,
           ),
           _buildDisplayField(
             label: 'Username',
             value: _parentProfile!.username,
           ),
-          _buildDisplayField(
-            label: 'Email',
-            value: _parentProfile!.email,
-          ),
+          _buildDisplayField(label: 'Email', value: _parentProfile!.email),
           _buildTextField(
             controller: _passwordController,
             label: 'Password',
             validator: ParentProfile.validatePassword,
             obscureText: true,
-            onChanged: (value) => _validateField('password', value),
+            onChanged: (v) => _validateField('password', v),
             fieldType: 'password',
           ),
           _buildDisplayField(
             label: 'Phone Number',
             value: _parentProfile!.phoneNumber,
           ),
-          
           SizedBox(height: 16.h),
-          
           Row(
             children: [
               Expanded(
-                child: ElevatedButton(
+                child: OutlinedButton(
                   onPressed: _cancelEdit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withOpacity(0.2),
+                  style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.r),
-                    ),
+                    side: BorderSide(color: Colors.white.withOpacity(0.5)),
                   ),
-                  child: Text('Cancel'),
+                  child: const Text('Cancel'),
                 ),
               ),
               SizedBox(width: 12.w),
@@ -470,75 +404,11 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFF8B5CF6),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.r),
-                    ),
                   ),
-                  child: Text('Save'),
+                  child: const Text('Save'),
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDisplayField({
-    required String label,
-    required String value,
-  }) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 12.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 12.sp,
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(4.r),
-                ),
-                child: Text(
-                  'Not editable',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 8.sp,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4.h),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(8.r),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.2),
-                style: BorderStyle.solid,
-              ),
-            ),
-            child: Text(
-              value,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
-                fontSize: 12.sp,
-              ),
-            ),
           ),
         ],
       ),
@@ -549,79 +419,79 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     required TextEditingController controller,
     required String label,
     required String? Function(String?) validator,
+    String? fieldType,
     TextInputType? keyboardType,
     bool obscureText = false,
     Function(String)? onChanged,
-    bool enabled = true,
-    String? fieldType,
   }) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 12.h),
+      padding: EdgeInsets.only(bottom: 10.h),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        obscureText: obscureText,
+        onChanged: onChanged,
+        style: TextStyle(color: Colors.white, fontSize: 12.sp),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            color: Colors.white.withOpacity(0.7),
+            fontSize: 12.sp,
+          ),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.1),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.r),
+            borderSide: BorderSide(
+              color: _fieldErrors[fieldType] != null
+                  ? Colors.red
+                  : Colors.white.withOpacity(0.3),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.r),
+            borderSide: BorderSide(
+              color: _fieldErrors[fieldType] != null
+                  ? Colors.red
+                  : Colors.white,
+            ),
+          ),
+        ),
+        validator: validator,
+      ),
+    );
+  }
+
+  Widget _buildDisplayField({required String label, required String value}) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 10.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextFormField(
-            controller: controller,
-            keyboardType: keyboardType,
-            obscureText: obscureText,
-            onChanged: onChanged,
-            enabled: enabled,
+          Text(
+            label,
             style: TextStyle(
-              color: enabled ? Colors.white : Colors.white.withOpacity(0.5),
+              color: Colors.white.withOpacity(0.7),
               fontSize: 12.sp,
             ),
-            decoration: InputDecoration(
-              labelText: label,
-              labelStyle: TextStyle(
-                color: enabled ? Colors.white.withOpacity(0.7) : Colors.white.withOpacity(0.4),
+          ),
+          SizedBox(height: 4.h),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
+            ),
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
                 fontSize: 12.sp,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.r),
-                borderSide: BorderSide(
-                  color: _fieldErrors[fieldType] != null ? Colors.red : Colors.white.withOpacity(0.3),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.r),
-                borderSide: BorderSide(
-                  color: _fieldErrors[fieldType] != null ? Colors.red : Colors.white,
-                ),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.r),
-                borderSide: BorderSide(
-                  color: Colors.red,
-                ),
-              ),
-              focusedErrorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.r),
-                borderSide: BorderSide(
-                  color: Colors.red,
-                ),
-              ),
-              disabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.r),
-                borderSide: BorderSide(
-                  color: Colors.white.withOpacity(0.2),
-                ),
-              ),
-              filled: true,
-              fillColor: enabled ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.05),
             ),
-            validator: validator,
           ),
-          if (_fieldErrors[fieldType] != null)
-            Padding(
-              padding: EdgeInsets.only(top: 4.h, left: 12.w),
-              child: Text(
-                _fieldErrors[fieldType]!,
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 10.sp,
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -640,7 +510,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
           ),
         ),
         SizedBox(height: 12.h),
-        
         if (_children.isEmpty)
           Container(
             width: double.infinity,
@@ -651,32 +520,23 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
             ),
             child: Column(
               children: [
-                Icon(
-                  Icons.child_care,
-                  size: 48.sp,
-                  color: Colors.grey[400],
-                ),
+                Icon(Icons.child_care, size: 48.sp, color: Colors.grey[400]),
                 SizedBox(height: 8.h),
                 Text(
                   'No children added yet',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14.sp, color: Colors.grey[600]),
                 ),
               ],
             ),
           )
         else
           SizedBox(
-            height: 120.h,
+            height: 130.h,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: _children.length + 1, // +1 for add button
+              itemCount: _children.length + 1,
               itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _buildAddChildCard();
-                }
+                if (index == 0) return _buildAddChildCard();
                 return _buildChildCard(_children[index - 1]);
               },
             ),
@@ -690,12 +550,12 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
       width: 100.w,
       margin: EdgeInsets.only(right: 12.w),
       child: Card(
-        elevation: 2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.r),
         ),
+        elevation: 2,
         child: Padding(
-          padding: EdgeInsets.all(12.w),
+          padding: EdgeInsets.all(10.w),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -709,7 +569,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                           width: 50.w,
                           height: 50.h,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
+                          errorBuilder: (context, error, stack) {
                             return Text(
                               child.initial,
                               style: TextStyle(
@@ -738,18 +598,11 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                   fontWeight: FontWeight.w600,
                   color: Colors.black87,
                 ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
                 child.lastName,
-                style: TextStyle(
-                  fontSize: 10.sp,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
+                style: TextStyle(fontSize: 10.sp, color: Colors.grey[600]),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -769,18 +622,25 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
           borderRadius: BorderRadius.circular(12.r),
         ),
         child: InkWell(
-          onTap: () {
-            _showToast('Add child functionality coming soon', ToastificationType.info);
-          },
           borderRadius: BorderRadius.circular(12.r),
+          onTap: () {
+            _showToast(
+              'Add child functionality coming soon',
+              ToastificationType.info,
+            );
+          },
           child: Padding(
-            padding: EdgeInsets.all(12.w),
+            padding: EdgeInsets.symmetric(
+              horizontal: 8.w,
+              vertical: 10.h,
+            ), // ✅ balanced
             child: Column(
+              mainAxisSize: MainAxisSize.min, // ✅ prevent vertical stretching
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 50.w,
-                  height: 50.h,
+                  width: 45.w,
+                  height: 45.h,
                   decoration: BoxDecoration(
                     color: const Color(0xFF8B5CF6).withOpacity(0.1),
                     shape: BoxShape.circle,
@@ -788,18 +648,22 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                   child: Icon(
                     Icons.add,
                     color: const Color(0xFF8B5CF6),
-                    size: 24.sp,
+                    size: 22.sp,
                   ),
                 ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Add Child',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF8B5CF6),
+                SizedBox(height: 6.h),
+                Flexible(
+                  child: Text(
+                    'Add Child',
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF8B5CF6),
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                  textAlign: TextAlign.center,
                 ),
               ],
             ),

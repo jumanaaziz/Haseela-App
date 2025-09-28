@@ -79,6 +79,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'phoneNumber': _phoneController.text.trim(),
         'avatar': null,
         'createdAt': FieldValue.serverTimestamp(),
+        'role': 'parent',
       });
 
       // 3️⃣ Navigate to parent profile screen

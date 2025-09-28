@@ -10,6 +10,7 @@ import '../services/firebase_service.dart';
 import 'spending_wallet_screen.dart';
 import 'saving_wallet_screen.dart';
 import 'transfer_screen.dart';
+import '../../widgets/custom_bottom_nav.dart'; // adjust the path if needed
 
 class HomeScreen extends StatefulWidget {
   final String parentId;
@@ -42,18 +43,40 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     parentId = widget.parentId;
     childId = widget.childId;
-    _fetchChildProfile(); // 👈 Fetch child document data
-    _loadUserData(); // 👈 Fetch wallet & avatar
+
+    print('🔹 INIT STATE — parentId=$parentId, childId=$childId');
+
+    setState(() {
+      isLoading = true;
+    });
+
+    Future.wait([_fetchChildProfile(), _loadUserData()])
+        .then((_) {
+          print('✅ Future.wait completed');
+          if (mounted) {
+            setState(() {
+              isLoading = false;
+            });
+          }
+        })
+        .catchError((e) {
+          print('❌ Future.wait error: $e');
+          if (mounted) {
+            setState(() {
+              isLoading = false;
+            });
+          }
+        });
   }
 
   Future<void> _loadUserData() async {
     try {
       print('Loading data for parent: $parentId, child: $childId');
 
-      // Test Firebase connection first
+      // 🔹 Test Firebase connection first
       await FirebaseService.testFirebaseConnection(parentId, childId);
 
-      // Load child profile data
+      // 🔹 Load child profile (avatar, etc.)
       final profileData = await FirebaseService.getChildProfile(
         parentId,
         childId,
@@ -63,7 +86,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (profileData != null &&
           profileData['avatar'] != null &&
           profileData['avatar'] != '') {
-        // Load avatar from Firebase Storage URL
         final avatarUrl = profileData['avatar'] as String;
         print('Loading avatar from URL: $avatarUrl');
         setState(() {
@@ -71,13 +93,12 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
 
-      // Check if child wallet exists
-      final wallet = await FirebaseService.getChildWallet(parentId, childId);
+      // 🔹 Load wallet
+      var wallet = await FirebaseService.getChildWallet(parentId, childId);
       print('Wallet loaded: ${wallet != null}');
 
       if (wallet == null) {
         print('Creating new wallet for child...');
-        // Initialize default data if child doesn't exist
         final success = await FirebaseService.initializeChildData(
           parentId,
           childId,
@@ -85,31 +106,21 @@ class _HomeScreenState extends State<HomeScreen> {
         print('Wallet creation success: $success');
 
         if (success) {
-          // Load the newly created data
-          final newWallet = await FirebaseService.getChildWallet(
-            parentId,
-            childId,
-          );
-          print('New wallet loaded: ${newWallet != null}');
-
-          setState(() {
-            userWallet = newWallet;
-            isLoading = false;
-          });
+          wallet = await FirebaseService.getChildWallet(parentId, childId);
+          print('New wallet loaded: ${wallet != null}');
         } else {
           throw Exception('Failed to create child wallet');
         }
-      } else {
+      }
+
+      // 🔹 Update state
+      if (wallet != null) {
         setState(() {
           userWallet = wallet;
-          isLoading = false;
         });
       }
     } catch (e) {
-      print('Error loading user data: $e');
-      setState(() {
-        isLoading = false;
-      });
+      print('❌ Error loading user data: $e');
     }
   }
 
@@ -127,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _childData = doc.data();
         });
         print('✅ Child profile loaded: $_childData');
+        isLoading = false; // ✅ Stop loading once data is ready
       } else {
         print(
           '⚠️ Child document not found for $childId under parent $parentId',
@@ -134,6 +146,26 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('❌ Error fetching child profile: $e');
+    }
+  }
+
+  void _onNavTap(BuildContext context, int index) {
+    switch (index) {
+      case 0:
+        // Already on Profile
+        break;
+      /* case 1:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const TaskManagementScreen()),
+        );
+        break;
+      case 2:
+        _showToast('Wishlist coming soon', ToastificationType.info);
+        break;
+      case 3:
+        _showToast('Leaderboard coming soon', ToastificationType.info);
+        break; */
     }
   }
 
@@ -162,6 +194,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+        ),
+        bottomNavigationBar: CustomBottomNavigationBar(
+          currentIndex: 0,
+          onTap: (index) => _onNavTap(context, index),
         ),
       );
     }
@@ -418,14 +454,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   SizedBox(height: 12.h),
                   _buildProfileField(
-                    "Last Name",
-                    _childData?['lastName'] ?? '-',
+                    "Username",
+                    _childData?['username'] ?? '-',
                     isEditable: false,
                   ),
                   SizedBox(height: 12.h),
                   _buildProfileField(
-                    "Phone Number",
-                    _childData?['phoneNumber'] ?? '-',
+                    "Email",
+                    _childData?['email'] ?? '-',
                     isEditable: false,
                   ),
                 ],

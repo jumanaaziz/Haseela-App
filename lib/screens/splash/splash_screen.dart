@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../auth_background.dart';
-import 'launch_screen.dart';
+import 'launch_screen_old.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -18,7 +18,7 @@ class _SplashScreenState extends State<SplashScreen> {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const LaunchScreen()),
+          MaterialPageRoute(builder: (context) => const LaunchScreenOld()),
         );
       }
     });

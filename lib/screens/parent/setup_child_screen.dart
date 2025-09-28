@@ -122,6 +122,7 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
         'pin_salt': salt,
         'createdAt': FieldValue.serverTimestamp(),
         'active': true,
+        'role': 'child',
       };
 
       await childDocRef.set(childData);

@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:haseela_app/screens/child/child_home_screen.dart';
 import '../auth_background.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+String hashPinWithSalt(String pin, String salt) {
+  final bytes = utf8.encode(pin + salt);
+  final digest = sha256.convert(bytes);
+  return digest.toString();
+}
 
 class ChildLoginScreen extends StatefulWidget {
   const ChildLoginScreen({Key? key}) : super(key: key);
@@ -29,27 +40,79 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+
     final parentUsername = _parentUsernameController.text.trim();
     final childUsername = _childUsernameController.text.trim();
     final pin = _pinController.text.trim();
 
     try {
-      // TODO: Add login logic here
-      // For now, just simulate loading
-      await Future.delayed(const Duration(seconds: 2));
+      // 1️⃣ Find parent by username
+      final parentSnap = await FirebaseFirestore.instance
+          .collection('Parents')
+          .where('username', isEqualTo: parentUsername)
+          .limit(1)
+          .get();
 
-      if (mounted) {
-        _showSnackBar('Login successful!', Colors.green);
-        // TODO: Navigate to child dashboard
+      if (parentSnap.docs.isEmpty) {
+        _showSnackBar('Parent username not found', Colors.red);
+        return;
       }
+
+      final parentDoc = parentSnap.docs.first;
+      final parentId = parentDoc.id;
+
+      // 2️⃣ Find child by username under this parent
+      final childSnap = await FirebaseFirestore.instance
+          .collection('Parents')
+          .doc(parentId)
+          .collection('Children')
+          .where('username', isEqualTo: childUsername)
+          .limit(1)
+          .get();
+
+      if (childSnap.docs.isEmpty) {
+        _showSnackBar('Child username not found', Colors.red);
+        return;
+      }
+
+      final childDoc = childSnap.docs.first;
+      final childId = childDoc.id;
+      final childData = childDoc.data();
+
+      // 3️⃣ Retrieve the email stored for this child
+      final email = childData['email'];
+      if (email == null) {
+        _showSnackBar('No email found for this child account', Colors.red);
+        return;
+      }
+
+      // 4️⃣ Sign in to Firebase Auth with email & PIN
+      try {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: pin,
+        );
+      } on FirebaseAuthException catch (e) {
+        _showSnackBar('Incorrect PIN or email: ${e.message}', Colors.red);
+        return;
+      }
+
+      // ✅ SUCCESS: Navigate to child home screen
+      _showSnackBar('Login successful!', Colors.green);
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              HomeScreen(parentId: parentId, childId: childId),
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        _showSnackBar('Login failed: $e', Colors.red);
-      }
+      _showSnackBar('Login failed: $e', Colors.red);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -88,10 +151,10 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
     if (value == null || value.trim().isEmpty) {
       return 'PIN is required';
     }
-    if (value.trim().length != 4) {
-      return 'PIN must be exactly 4 digits';
+    if (value.trim().length != 6) {
+      return 'PIN must be exactly 6 digits';
     }
-    if (!RegExp(r'^\d{4}$').hasMatch(value.trim())) {
+    if (!RegExp(r'^\d{6}$').hasMatch(value.trim())) {
       return 'PIN must contain only numbers';
     }
     return null;
@@ -213,15 +276,15 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                             ),
                             SizedBox(height: 20.h),
 
-                            // 4-digit PIN field
+                            // 6-digit PIN field
                             TextFormField(
                               controller: _pinController,
                               obscureText: _obscurePin,
                               keyboardType: TextInputType.number,
-                              maxLength: 4,
+                              maxLength: 6,
                               style: TextStyle(fontSize: 16.sp),
                               decoration: InputDecoration(
-                                hintText: '4-digit PIN',
+                                hintText: '6-digit PIN',
                                 hintStyle: TextStyle(
                                   fontSize: 16.sp,
                                   color: Colors.grey[500],

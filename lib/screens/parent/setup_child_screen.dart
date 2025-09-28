@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:crypto/crypto.dart';
 import 'package:toastification/toastification.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SetupChildScreen extends StatefulWidget {
   final String parentId;
@@ -48,6 +49,22 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
     );
   }
 
+  Future<String?> _createChildAuthAccount(String email, String pin) async {
+    try {
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: pin);
+
+      return userCredential.user?.uid; // ✅ Return Firebase UID
+    } on FirebaseAuthException catch (e) {
+      print('Error creating child Firebase Auth account: $e');
+      _showToast(
+        'Failed to create child account: ${e.message}',
+        ToastificationType.error,
+      );
+      return null;
+    }
+  }
+
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -59,7 +76,7 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
       final email = _emailController.text.trim();
       final pin = _pinController.text.trim();
 
-      // 1️⃣ Generate salt + hash PIN
+      // 1️⃣ Generate salt + hash
       String _generateSalt([int length = 16]) {
         final rand = Random.secure();
         final values = List<int>.generate(length, (i) => rand.nextInt(256));
@@ -74,24 +91,28 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
       final salt = _generateSalt();
       final pinHash = _hashPin(pin, salt);
 
-      // 2️⃣ Check if child username already exists for this parent
+      // 2️⃣ Create Firebase Auth account for the child
+      final childUid = await _createChildAuthAccount(email, pin);
+      if (childUid == null) {
+        setState(() => _isLoading = false);
+        return; // stop if failed
+      }
+
+      // 3️⃣ Check if username already exists for this parent
       final childDocRef = FirebaseFirestore.instance
           .collection('Parents')
           .doc(widget.parentId)
           .collection('Children')
-          .doc(username.toLowerCase());
+          .doc(childUid); // 👈 using UID now, not username
 
-      final childDoc = await childDocRef.get();
-      if (childDoc.exists) {
-        _showToast(
-          'Username already exists for this parent.',
-          ToastificationType.error,
-        );
+      final existingDoc = await childDocRef.get();
+      if (existingDoc.exists) {
+        _showToast('Child account already exists.', ToastificationType.error);
         setState(() => _isLoading = false);
         return;
       }
 
-      // 3️⃣ Prepare child data
+      // 4️⃣ Save child metadata to Firestore
       final childData = {
         'firstName': firstName,
         'username': username,
@@ -103,11 +124,10 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
         'active': true,
       };
 
-      // 4️⃣ Save child document to Firestore
       await childDocRef.set(childData);
 
       _showToast(
-        'Child account created successfully 🎉',
+        '✅ Child account created successfully 🎉',
         ToastificationType.success,
       );
 
@@ -456,19 +476,19 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
           SizedBox(height: 20.h),
           _buildFormField(
             _pinController,
-            '4-Digit PIN',
-            'Enter 4-digit PIN',
+            '6-Digit PIN',
+            'Enter 6-digit PIN',
             Icons.lock_outline,
             isTablet,
             isDesktop,
             isSmallScreen,
             isWideScreen,
             keyboardType: TextInputType.number,
-            maxLength: 4,
+            maxLength: 6,
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'PIN is required';
-              if (v.length != 4) return 'PIN must be exactly 4 digits';
-              if (!RegExp(r'^\d{4}$').hasMatch(v))
+              if (v.length != 6) return 'PIN must be exactly 6 digits';
+              if (!RegExp(r'^\d{6}$').hasMatch(v))
                 return 'PIN must contain only numbers';
               return null;
             },

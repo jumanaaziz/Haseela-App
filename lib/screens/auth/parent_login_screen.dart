@@ -6,14 +6,14 @@ import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import 'package:haseela_app/screens/parent/parent_profile_screen.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+class ParentLoginScreen extends StatefulWidget {
+  const ParentLoginScreen({Key? key}) : super(key: key);
 
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  _ParentLoginScreenState createState() => _ParentLoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _ParentLoginScreenState extends State<ParentLoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();

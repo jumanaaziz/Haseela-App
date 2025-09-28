@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../auth_background.dart';
-import '../auth/login_screen.dart';
+import '../auth/parent_login_screen.dart';
 import '../auth/signup_screen.dart';
 
 class LaunchScreen extends StatelessWidget {
@@ -70,7 +70,7 @@ class LaunchScreen extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => LoginScreen(),
+                                      builder: (context) => ParentLoginScreen(),
                                     ),
                                   );
                                 },

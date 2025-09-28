@@ -1,0 +1,320 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../auth_background.dart';
+
+class ChildLoginScreen extends StatefulWidget {
+  const ChildLoginScreen({Key? key}) : super(key: key);
+
+  @override
+  _ChildLoginScreenState createState() => _ChildLoginScreenState();
+}
+
+class _ChildLoginScreenState extends State<ChildLoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _parentUsernameController = TextEditingController();
+  final _childUsernameController = TextEditingController();
+  final _pinController = TextEditingController();
+  bool _isLoading = false;
+  bool _obscurePin = true;
+
+  @override
+  void dispose() {
+    _parentUsernameController.dispose();
+    _childUsernameController.dispose();
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+    final parentUsername = _parentUsernameController.text.trim();
+    final childUsername = _childUsernameController.text.trim();
+    final pin = _pinController.text.trim();
+
+    try {
+      // TODO: Add login logic here
+      // For now, just simulate loading
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (mounted) {
+        _showSnackBar('Login successful!', Colors.green);
+        // TODO: Navigate to child dashboard
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Login failed: $e', Colors.red);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // Validation methods
+  String? _validateParentUsername(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Parent username is required';
+    }
+    if (value.trim().length < 3) {
+      return 'Parent username must be at least 3 characters';
+    }
+    return null;
+  }
+
+  String? _validateChildUsername(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Your username is required';
+    }
+    if (value.trim().length < 3) {
+      return 'Username must be at least 3 characters';
+    }
+    return null;
+  }
+
+  String? _validatePin(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'PIN is required';
+    }
+    if (value.trim().length != 4) {
+      return 'PIN must be exactly 4 digits';
+    }
+    if (!RegExp(r'^\d{4}$').hasMatch(value.trim())) {
+      return 'PIN must contain only numbers';
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.black, size: 24.sp),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: AuthBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight:
+                    MediaQuery.of(context).size.height -
+                    MediaQuery.of(context).padding.top -
+                    MediaQuery.of(context).padding.bottom,
+              ),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20.w,
+                    vertical: 20.h,
+                  ),
+                  child: Center(
+                    child: Container(
+                      constraints: BoxConstraints(maxWidth: 500.w),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Welcome text
+                            Text(
+                              'Child Login',
+                              style: TextStyle(
+                                fontSize: 28.sp,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: 8.h),
+                            Text(
+                              'Enter your login details',
+                              style: TextStyle(
+                                fontSize: 16.sp,
+                                color: Colors.grey[600],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: 40.h),
+
+                            // Parent Username field
+                            TextFormField(
+                              controller: _parentUsernameController,
+                              style: TextStyle(fontSize: 16.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Parent\'s Username',
+                                hintStyle: TextStyle(
+                                  fontSize: 16.sp,
+                                  color: Colors.grey[500],
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(25.r),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 20.w,
+                                  vertical: 15.h,
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.person_outline,
+                                  color: const Color(0xFF8D61B4),
+                                  size: 20.sp,
+                                ),
+                              ),
+                              validator: _validateParentUsername,
+                            ),
+                            SizedBox(height: 20.h),
+
+                            // Child Username field
+                            TextFormField(
+                              controller: _childUsernameController,
+                              style: TextStyle(fontSize: 16.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Your Username',
+                                hintStyle: TextStyle(
+                                  fontSize: 16.sp,
+                                  color: Colors.grey[500],
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(25.r),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 20.w,
+                                  vertical: 15.h,
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.alternate_email,
+                                  color: const Color(0xFF8D61B4),
+                                  size: 20.sp,
+                                ),
+                              ),
+                              validator: _validateChildUsername,
+                            ),
+                            SizedBox(height: 20.h),
+
+                            // 4-digit PIN field
+                            TextFormField(
+                              controller: _pinController,
+                              obscureText: _obscurePin,
+                              keyboardType: TextInputType.number,
+                              maxLength: 4,
+                              style: TextStyle(fontSize: 16.sp),
+                              decoration: InputDecoration(
+                                hintText: '4-digit PIN',
+                                hintStyle: TextStyle(
+                                  fontSize: 16.sp,
+                                  color: Colors.grey[500],
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(25.r),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 20.w,
+                                  vertical: 15.h,
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.lock,
+                                  color: const Color(0xFF8D61B4),
+                                  size: 20.sp,
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePin
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
+                                    color: const Color(0xFF8D61B4),
+                                    size: 20.sp,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePin = !_obscurePin;
+                                    });
+                                  },
+                                ),
+                                counterText: '', // Hide character counter
+                              ),
+                              validator: _validatePin,
+                            ),
+                            SizedBox(height: 30.h),
+
+                            // Login button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50.h,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : _handleLogin,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF8D61B4),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(25.r),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                child: _isLoading
+                                    ? SizedBox(
+                                        width: 20.w,
+                                        height: 20.h,
+                                        child: const CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Log In',
+                                        style: TextStyle(
+                                          fontSize: 16.sp,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            SizedBox(height: 20.h),
+
+                            // Help text
+                            Text(
+                              'Contact your parent if you forgot your login details',
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: Colors.grey[600],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

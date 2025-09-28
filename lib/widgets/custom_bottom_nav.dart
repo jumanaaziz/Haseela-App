@@ -13,25 +13,29 @@ class CustomBottomNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Adaptive height depending on screen size
+    final double navBarHeight = (ScreenUtil().screenHeight < 700) ? 65.h : 80.h;
+
     return Container(
-      height: 85.h, // ✅ scaled height
+      height: navBarHeight,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20.r), // ✅ scaled radius
+          topLeft: Radius.circular(20.r),
           topRight: Radius.circular(20.r),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 20.r, // ✅ scaled blur
-            spreadRadius: 2.r,
-            offset: Offset(0, -4.h),
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 12.r,
+            spreadRadius: 1.r,
+            offset: Offset(0, -3.h),
           ),
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisAlignment:
+            MainAxisAlignment.spaceAround, // ✅ gives equal spacing
         children: [
           _buildNavItem(
             icon: Icons.home,
@@ -68,39 +72,32 @@ class CustomBottomNavigationBar extends StatelessWidget {
     required int index,
     required bool isActive,
   }) {
-    return GestureDetector(
-      onTap: () => onTap(index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: EdgeInsets.symmetric(
-          vertical: isActive ? 10.h : 6.h, // ✅ responsive padding
-          horizontal: 12.w,
-        ),
+    return Flexible(
+      child: GestureDetector(
+        onTap: () => onTap(index),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              padding: EdgeInsets.all(isActive ? 4.w : 0), // ✅ scaled padding
-              child: Icon(
-                icon,
-                size: isActive ? 26.sp : 24.sp, // ✅ responsive icon size
-                color: isActive
-                    ? const Color(0xFF643FDB)
-                    : const Color(0xFF6B7280),
-              ),
+            Icon(
+              icon,
+              size: isActive ? 26.sp : 23.sp, // ✅ slightly smaller default
+              color: isActive
+                  ? const Color(0xFF643FDB)
+                  : const Color(0xFF6B7280),
             ),
-            SizedBox(height: 4.h), // ✅ responsive spacing
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: isActive ? 13.sp : 12.sp, // ✅ scaled font
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                color: isActive
-                    ? const Color(0xFF643FDB)
-                    : const Color(0xFF6B7280),
+            SizedBox(height: 4.h),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: isActive ? 13.sp : 11.5.sp,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                  color: isActive
+                      ? const Color(0xFF643FDB)
+                      : const Color(0xFF6B7280),
+                ),
               ),
             ),
           ],

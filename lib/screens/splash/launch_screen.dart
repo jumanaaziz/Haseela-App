@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'auth_background.dart';
-import 'login_screen.dart';
-import 'signup_screen.dart';
+import '../auth_background.dart';
+import '../auth/login_screen.dart';
+import '../auth/signup_screen.dart';
 
 class LaunchScreen extends StatelessWidget {
   const LaunchScreen({Key? key}) : super(key: key);

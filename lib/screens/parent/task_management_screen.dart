@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:toastification/toastification.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'models/task.dart';
+
+import '../../models/task.dart';
 import 'assign_task_screen.dart';
-import 'models/child_options.dart';
-import 'task_card.dart';
-import 'widgets/custom_bottom_nav.dart';
+import '../../models/child_options.dart';
+import '../../widgets/task_card.dart';
+import '../../widgets/custom_bottom_nav.dart';
+import 'parent_profile_screen.dart';
 
 class TaskManagementScreen extends StatefulWidget {
   const TaskManagementScreen({super.key});
@@ -16,9 +19,11 @@ class TaskManagementScreen extends StatefulWidget {
 }
 
 class _TaskManagementScreenState extends State<TaskManagementScreen> {
+  // ✅ Always use the signed-in parent's UID
+  String get _uid => FirebaseAuth.instance.currentUser!.uid;
+
   String selectedUserId = '';
   List<ChildOption> _children = [];
-  int _currentIndex = 1;
   String selectedStatusFilter = 'All'; // Default to show all tasks
 
   // Available status filter options
@@ -35,31 +40,36 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     _loadChildren();
   }
 
-  /// ✅ Load children for parent
+  /// ✅ Load children for parent (by UID)
   Future<void> _loadChildren() async {
-    final snap = await FirebaseFirestore.instance
-        .collection("Parents")
-        .doc("parent001")
-        .collection("Children")
-        .get();
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection("Parents")
+          .doc(_uid)
+          .collection("Children")
+          .get();
 
-    setState(() {
-      _children = snap.docs
-          .map((doc) => ChildOption.fromFirestore(doc.id, doc.data()))
-          .where((c) => c.firstName.trim().isNotEmpty)
-          .toList();
+      setState(() {
+        _children = snap.docs
+            .map((doc) => ChildOption.fromFirestore(doc.id, doc.data()))
+            .where((c) => c.firstName.trim().isNotEmpty)
+            .toList();
 
-      if (_children.isNotEmpty) {
-        selectedUserId = _children.first.id;
-      }
-    });
+        if (_children.isNotEmpty) {
+          selectedUserId = _children.first.id;
+        }
+      });
+    } catch (e) {
+      _toast('Error loading children: $e', ToastificationType.error);
+    }
   }
 
-  /// ✅ Delete task
+  /// ✅ Delete task (by UID + selected child)
   Future<void> _deleteTask(String taskId) async {
+    if (selectedUserId.isEmpty) return;
     await FirebaseFirestore.instance
         .collection("Parents")
-        .doc("parent001")
+        .doc(_uid)
         .collection("Children")
         .doc(selectedUserId)
         .collection("Tasks")
@@ -97,25 +107,23 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
 
   /// ✅ Filter tasks based on selected status
   List<Task> _filterTasksByStatus(List<Task> tasks) {
-    if (selectedStatusFilter == 'All') {
-      return tasks;
-    }
+    if (selectedStatusFilter == 'All') return tasks;
 
     return tasks.where((task) {
       switch (selectedStatusFilter) {
         case 'New':
-          return task.taskStatus == TaskStatus.newTask;
+          return task.status == TaskStatus.newTask;
         case 'Pending':
-          return task.taskStatus == TaskStatus.pending;
+          return task.status == TaskStatus.pending;
         case 'Approved':
-          return task.taskStatus == TaskStatus.done;
+          return task.status == TaskStatus.done;
         default:
           return true;
       }
     }).toList();
   }
 
-  /// ✅ Get color for status indicator in dropdown
+  /// ✅ Status color for dropdown
   Color _getStatusColor(String status) {
     switch (status) {
       case 'All':
@@ -131,10 +139,44 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     }
   }
 
+  void _toast(String msg, ToastificationType type) {
+    toastification.show(
+      context: context,
+      type: type,
+      style: ToastificationStyle.fillColored,
+      title: Text(msg),
+      autoCloseDuration: const Duration(seconds: 2),
+    );
+  }
+
+  void _onNavTap(BuildContext context, int index) {
+    switch (index) {
+      case 0:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ParentProfileScreen()),
+        );
+        break;
+      case 1:
+        // already on Tasks
+        break;
+      case 2:
+        _toast('Wishlist coming soon', ToastificationType.info);
+        break;
+      case 3:
+        _toast('Leaderboard coming soon', ToastificationType.info);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      bottomNavigationBar: CustomBottomNavigationBar(
+        currentIndex: 1,
+        onTap: (i) => _onNavTap(context, i),
+      ),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
@@ -169,7 +211,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                         builder: (context) => const AssignTaskScreen(),
                       ),
                     );
-                    // Task is already saved in AssignTaskScreen, StreamBuilder will auto-update
+                    // StreamBuilder auto-updates after return
                   },
                   icon: Icon(Icons.add, color: Colors.white, size: 22.sp),
                 ),
@@ -181,7 +223,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // 👶 Child filter row
+            // 👶 Child pills
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
               child: SingleChildScrollView(
@@ -193,12 +235,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                       margin: EdgeInsets.only(right: 8.w),
                       child: ElevatedButton(
                         onPressed: () {
-                          print(
-                            'Selected child: ${child.firstName} with ID: ${child.id}',
-                          );
-                          setState(() {
-                            selectedUserId = child.id;
-                          });
+                          setState(() => selectedUserId = child.id);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isSelected
@@ -236,12 +273,12 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
               ),
             ),
 
-            // 🔍 Status Filter Button
+            // 🔍 Status filter
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
               child: Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6), // Light purple background
+                  color: const Color(0xFFF3F4F6),
                   borderRadius: BorderRadius.circular(20.r),
                   border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
                 ),
@@ -319,9 +356,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                     }).toList(),
                     onChanged: (String? newValue) {
                       if (newValue != null) {
-                        setState(() {
-                          selectedStatusFilter = newValue;
-                        });
+                        setState(() => selectedStatusFilter = newValue);
                       }
                     },
                   ),
@@ -329,7 +364,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
               ),
             ),
 
-            // 📋 Task List
+            // 📋 Task list
             Expanded(
               child: selectedUserId.isEmpty
                   ? Center(
@@ -341,20 +376,13 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                   : StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
                           .collection("Parents")
-                          .doc("parent001")
+                          .doc(_uid)
                           .collection("Children")
                           .doc(selectedUserId)
                           .collection("Tasks")
                           .snapshots(),
                       builder: (context, snapshot) {
-                        print(
-                          'StreamBuilder - selectedUserId: $selectedUserId',
-                        );
-                        print(
-                          'StreamBuilder - snapshot.hasError: ${snapshot.hasError}',
-                        );
                         if (snapshot.hasError) {
-                          print('StreamBuilder - Error: ${snapshot.error}');
                           return Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -397,9 +425,6 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                         final allTasks = docs.map((doc) {
                           final data = doc.data() as Map<String, dynamic>;
 
-                          // Debug: Print the actual data to see what's causing the issue
-                          print('Task data for ${doc.id}: $data');
-
                           // Handle assignedBy field - can be DocumentReference or String
                           DocumentReference assignedByRef;
                           if (data['assignedBy'] is DocumentReference) {
@@ -407,30 +432,26 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                                 data['assignedBy'] as DocumentReference;
                           } else if (data['assignedBy'] is String) {
                             final assignedByPath = data['assignedBy'] as String;
-                            // Validate the path before creating DocumentReference
                             if (assignedByPath.isNotEmpty &&
                                 assignedByPath.contains('/')) {
                               try {
                                 assignedByRef = FirebaseFirestore.instance.doc(
                                   assignedByPath,
                                 );
-                              } catch (e) {
-                                print(
-                                  'Invalid assignedBy path: $assignedByPath, error: $e',
-                                );
+                              } catch (_) {
                                 assignedByRef = FirebaseFirestore.instance
                                     .collection('Parents')
-                                    .doc('parent001');
+                                    .doc(_uid);
                               }
                             } else {
                               assignedByRef = FirebaseFirestore.instance
                                   .collection('Parents')
-                                  .doc('parent001');
+                                  .doc(_uid);
                             }
                           } else {
                             assignedByRef = FirebaseFirestore.instance
                                 .collection('Parents')
-                                .doc('parent001');
+                                .doc(_uid);
                           }
 
                           return Task(
@@ -456,7 +477,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                         // Apply status filter
                         final tasks = _filterTasksByStatus(allTasks);
 
-                        // Show message if no tasks match the filter
+                        // If no tasks match the filter
                         if (tasks.isEmpty && allTasks.isNotEmpty) {
                           return Center(
                             child: Column(

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'auth_background.dart';
+import '../auth_background.dart';
 import 'launch_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -15,11 +14,11 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     // Navigate to launch screen after 3 seconds
-    Future.delayed(Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => LaunchScreen()),
+          MaterialPageRoute(builder: (context) => const LaunchScreen()),
         );
       }
     });
@@ -27,29 +26,32 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Use MediaQuery safely instead of ScreenUtil here
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
-      // backgroundColor: Colors.transparent,  <-- حُذِف هذا السطر
       body: AuthBackground(
         child: SafeArea(
-          child: Container(
-            width: 1.sw, // يغطي عرض الشاشة بالكامل
-            height: 1.sh, // يغطي ارتفاع الشاشة بالكامل
+          child: SizedBox(
+            width: size.width, // ✅ replaces 1.sw
+            height: size.height, // ✅ replaces 1.sh
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // ✅ Use MediaQuery size or fixed values safely
                   Image.asset(
                     'assets/images/logo.png',
-                    width: 220.w,
-                    height: 220.h,
+                    width: size.width * 0.55,
+                    height: size.width * 0.55,
                     fit: BoxFit.contain,
                   ),
-                  SizedBox(height: 40.h),
-                  CircularProgressIndicator(
+                  const SizedBox(height: 40),
+                  const CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(
                       Color(0xFF8D61B4),
                     ),
-                    strokeWidth: 3.w,
+                    strokeWidth: 3,
                   ),
                 ],
               ),

@@ -48,7 +48,7 @@ class LaunchScreenOld extends StatelessWidget {
 
                             /// 🟣 Title
                             Text(
-                              'Welcome to Haseela',
+                              'Welcome to Haseela!',
                               style: TextStyle(
                                 fontSize: 28.sp,
                                 fontWeight: FontWeight.bold,
@@ -104,7 +104,7 @@ class LaunchScreenOld extends StatelessWidget {
                             SizedBox(
                               width: double.infinity,
                               height: 50.h,
-                              child: OutlinedButton(
+                              child: ElevatedButton(
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -114,21 +114,19 @@ class LaunchScreenOld extends StatelessWidget {
                                     ),
                                   );
                                 },
-                                style: OutlinedButton.styleFrom(
-                                  side: BorderSide(
-                                    color: const Color(0xFF8D61B4),
-                                    width: 2.w,
-                                  ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF8D61B4),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(25.r),
                                   ),
+                                  elevation: 2,
                                 ),
                                 child: Text(
                                   'Log in as Child',
                                   style: TextStyle(
                                     fontSize: 16.sp,
                                     fontWeight: FontWeight.bold, // ✅ Bold
-                                    color: const Color(0xFF8D61B4),
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),

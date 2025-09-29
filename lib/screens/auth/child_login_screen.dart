@@ -163,218 +163,260 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.black, size: 24.sp),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
       body: AuthBackground(
         child: SafeArea(
-          child: SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight:
-                    MediaQuery.of(context).size.height -
-                    MediaQuery.of(context).padding.top -
-                    MediaQuery.of(context).padding.bottom,
-              ),
-              child: IntrinsicHeight(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 20.w,
-                    vertical: 20.h,
-                  ),
-                  child: Center(
-                    child: Container(
-                      constraints: BoxConstraints(maxWidth: 500.w),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Welcome text
-                            Text(
-                              'Child Login',
-                              style: TextStyle(
-                                fontSize: 28.sp,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              'Enter your login details',
-                              style: TextStyle(
-                                fontSize: 16.sp,
-                                color: Colors.grey[600],
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            SizedBox(height: 40.h),
-
-                            // Parent Username field
-                            TextFormField(
-                              controller: _parentUsernameController,
-                              style: TextStyle(fontSize: 16.sp),
-                              decoration: InputDecoration(
-                                hintText: 'Parent\'s Username',
-                                hintStyle: TextStyle(
-                                  fontSize: 16.sp,
-                                  color: Colors.grey[500],
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.8),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(25.r),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 20.w,
-                                  vertical: 15.h,
-                                ),
-                                prefixIcon: Icon(
-                                  Icons.person_outline,
-                                  color: const Color(0xFF8D61B4),
-                                  size: 20.sp,
-                                ),
-                              ),
-                              validator: _validateParentUsername,
-                            ),
-                            SizedBox(height: 20.h),
-
-                            // Child Username field
-                            TextFormField(
-                              controller: _childUsernameController,
-                              style: TextStyle(fontSize: 16.sp),
-                              decoration: InputDecoration(
-                                hintText: 'Your Username',
-                                hintStyle: TextStyle(
-                                  fontSize: 16.sp,
-                                  color: Colors.grey[500],
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.8),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(25.r),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 20.w,
-                                  vertical: 15.h,
-                                ),
-                                prefixIcon: Icon(
-                                  Icons.alternate_email,
-                                  color: const Color(0xFF8D61B4),
-                                  size: 20.sp,
-                                ),
-                              ),
-                              validator: _validateChildUsername,
-                            ),
-                            SizedBox(height: 20.h),
-
-                            // 6-digit PIN field
-                            TextFormField(
-                              controller: _pinController,
-                              obscureText: _obscurePin,
-                              keyboardType: TextInputType.number,
-                              maxLength: 6,
-                              style: TextStyle(fontSize: 16.sp),
-                              decoration: InputDecoration(
-                                hintText: '6-digit PIN',
-                                hintStyle: TextStyle(
-                                  fontSize: 16.sp,
-                                  color: Colors.grey[500],
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.8),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(25.r),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 20.w,
-                                  vertical: 15.h,
-                                ),
-                                prefixIcon: Icon(
-                                  Icons.lock,
-                                  color: const Color(0xFF8D61B4),
-                                  size: 20.sp,
-                                ),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscurePin
-                                        ? Icons.visibility
-                                        : Icons.visibility_off,
-                                    color: const Color(0xFF8D61B4),
-                                    size: 20.sp,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscurePin = !_obscurePin;
-                                    });
-                                  },
-                                ),
-                                counterText: '', // Hide character counter
-                              ),
-                              validator: _validatePin,
-                            ),
-                            SizedBox(height: 30.h),
-
-                            // Login button
-                            SizedBox(
-                              width: double.infinity,
-                              height: 50.h,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _handleLogin,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF8D61B4),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(25.r),
-                                  ),
-                                  elevation: 2,
-                                ),
-                                child: _isLoading
-                                    ? SizedBox(
-                                        width: 20.w,
-                                        height: 20.h,
-                                        child: const CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : Text(
-                                        'Log In',
-                                        style: TextStyle(
-                                          fontSize: 16.sp,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            SizedBox(height: 20.h),
-
-                            // Help text
-                            Text(
-                              'Contact your parent if you forgot your login details',
-                              style: TextStyle(
-                                fontSize: 14.sp,
-                                color: Colors.grey[600],
-                              ),
-                              textAlign: TextAlign.center,
+          child: Column(
+            children: [
+              // Back button
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: EdgeInsets.all(12.w),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(25.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
+                        ),
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: Colors.black87,
+                          size: 24.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Main content
+              Expanded(
+                child: SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight:
+                          MediaQuery.of(context).size.height -
+                          MediaQuery.of(context).padding.top -
+                          MediaQuery.of(context).padding.bottom,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20.w,
+                          vertical: 20.h,
+                        ),
+                        child: Center(
+                          child: Container(
+                            constraints: BoxConstraints(maxWidth: 500.w),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // Welcome text
+                                  Text(
+                                    'Welcome Back!',
+                                    style: TextStyle(
+                                      fontSize: 28.sp,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  SizedBox(height: 8.h),
+                                  Text(
+                                    'Enter your login details',
+                                    style: TextStyle(
+                                      fontSize: 16.sp,
+                                      color: Colors.grey[600],
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  SizedBox(height: 40.h),
+
+                                  // Parent Username field
+                                  TextFormField(
+                                    controller: _parentUsernameController,
+                                    style: TextStyle(fontSize: 16.sp),
+                                    decoration: InputDecoration(
+                                      hintText: 'Parent\'s Username',
+                                      hintStyle: TextStyle(
+                                        fontSize: 16.sp,
+                                        color: Colors.grey[500],
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.white.withOpacity(0.8),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          25.r,
+                                        ),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 20.w,
+                                        vertical: 15.h,
+                                      ),
+                                      prefixIcon: Icon(
+                                        Icons.person_outline,
+                                        color: const Color(0xFF8D61B4),
+                                        size: 20.sp,
+                                      ),
+                                    ),
+                                    validator: _validateParentUsername,
+                                  ),
+                                  SizedBox(height: 20.h),
+
+                                  // Child Username field
+                                  TextFormField(
+                                    controller: _childUsernameController,
+                                    style: TextStyle(fontSize: 16.sp),
+                                    decoration: InputDecoration(
+                                      hintText: 'Your Username',
+                                      hintStyle: TextStyle(
+                                        fontSize: 16.sp,
+                                        color: Colors.grey[500],
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.white.withOpacity(0.8),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          25.r,
+                                        ),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 20.w,
+                                        vertical: 15.h,
+                                      ),
+                                      prefixIcon: Icon(
+                                        Icons.alternate_email,
+                                        color: const Color(0xFF8D61B4),
+                                        size: 20.sp,
+                                      ),
+                                    ),
+                                    validator: _validateChildUsername,
+                                  ),
+                                  SizedBox(height: 20.h),
+
+                                  // 6-digit PIN field
+                                  TextFormField(
+                                    controller: _pinController,
+                                    obscureText: _obscurePin,
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 6,
+                                    style: TextStyle(fontSize: 16.sp),
+                                    decoration: InputDecoration(
+                                      hintText: '6-digit PIN',
+                                      hintStyle: TextStyle(
+                                        fontSize: 16.sp,
+                                        color: Colors.grey[500],
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.white.withOpacity(0.8),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          25.r,
+                                        ),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 20.w,
+                                        vertical: 15.h,
+                                      ),
+                                      prefixIcon: Icon(
+                                        Icons.lock,
+                                        color: const Color(0xFF8D61B4),
+                                        size: 20.sp,
+                                      ),
+                                      suffixIcon: IconButton(
+                                        icon: Icon(
+                                          _obscurePin
+                                              ? Icons.visibility
+                                              : Icons.visibility_off,
+                                          color: const Color(0xFF8D61B4),
+                                          size: 20.sp,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _obscurePin = !_obscurePin;
+                                          });
+                                        },
+                                      ),
+                                      counterText: '', // Hide character counter
+                                    ),
+                                    validator: _validatePin,
+                                  ),
+                                  SizedBox(height: 30.h),
+
+                                  // Login button
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 50.h,
+                                    child: ElevatedButton(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _handleLogin,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF8D61B4,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            25.r,
+                                          ),
+                                        ),
+                                        elevation: 2,
+                                      ),
+                                      child: _isLoading
+                                          ? SizedBox(
+                                              width: 20.w,
+                                              height: 20.h,
+                                              child:
+                                                  const CircularProgressIndicator(
+                                                    color: Colors.white,
+                                                    strokeWidth: 2,
+                                                  ),
+                                            )
+                                          : Text(
+                                              'Log In',
+                                              style: TextStyle(
+                                                fontSize: 16.sp,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  SizedBox(height: 20.h),
+
+                                  // Help text
+                                  Text(
+                                    'Contact your parent if you forgot your login details',
+                                    style: TextStyle(
+                                      fontSize: 14.sp,
+                                      color: Colors.grey[600],
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),

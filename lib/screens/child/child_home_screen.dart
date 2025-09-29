@@ -11,6 +11,9 @@ import 'spending_wallet_screen.dart';
 import 'saving_wallet_screen.dart';
 import 'transfer_screen.dart';
 import '../../widgets/custom_bottom_nav.dart'; // adjust the path if needed
+import 'package:haseela_app/screens/child/child_task_view_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:haseela_app/screens/auth_wrapper.dart';
 
 class HomeScreen extends StatefulWidget {
   final String parentId;
@@ -29,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   File? avatarImage;
   String? avatarUrl;
   Map<String, dynamic>? _childData; // 👈 for storing child profile data
-
+  int _navBarIndex = 0;
   // User data
   UserProfile? userProfile;
   Wallet? userWallet;
@@ -67,6 +70,44 @@ class _HomeScreenState extends State<HomeScreen> {
             });
           }
         });
+  }
+
+  void _onNavTap(BuildContext context, int index) {
+    if (index == _navBarIndex) return; // prevent unnecessary rebuild
+
+    setState(() {
+      _navBarIndex = index;
+    });
+
+    switch (index) {
+      case 0:
+        // Already on Home → do nothing
+        break;
+      case 1:
+        // ✅ Navigate to Tasks
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChildTaskViewScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
+        );
+        break;
+      case 2:
+        // 🔸 Wishlist tab placeholder
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Wishlist coming soon')));
+        break;
+      case 3:
+        // 🔸 Leaderboard tab placeholder
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Leaderboard coming soon')),
+        );
+        break;
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -149,28 +190,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _onNavTap(BuildContext context, int index) {
-    switch (index) {
-      case 0:
-        // Already on Profile
-        break;
-      /* case 1:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const TaskManagementScreen()),
-        );
-        break;
-      case 2:
-        _showToast('Wishlist coming soon', ToastificationType.info);
-        break;
-      case 3:
-        _showToast('Leaderboard coming soon', ToastificationType.info);
-        break; */
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    // 1️⃣ Loading State
     if (isLoading) {
       return Scaffold(
         backgroundColor: const Color(0xFFEFF1F3),
@@ -195,13 +217,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        bottomNavigationBar: CustomBottomNavigationBar(
-          currentIndex: 0,
-          onTap: (index) => _onNavTap(context, index),
-        ),
       );
     }
 
+    // 2️⃣ Error State
     if (userWallet == null) {
       return Scaffold(
         backgroundColor: const Color(0xFFEFF1F3),
@@ -242,6 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    // 3️⃣ Main Content State
     return Scaffold(
       backgroundColor: const Color(0xFFEFF1F3),
       body: SafeArea(
@@ -250,15 +270,18 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Profile Card
               _buildProfileCard(),
               SizedBox(height: 24.h),
-
-              // Wallet Balance Cards
               _buildWalletCards(),
             ],
           ),
         ),
+      ),
+      bottomNavigationBar: CustomBottomNavigationBar(
+        currentIndex: 0, // ✅ Home tab highlighted
+        onTap: (index) {
+          // ✅ ChildMainWrapper handles actual tab switching
+        },
       ),
     );
   }
@@ -465,6 +488,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     isEditable: false,
                   ),
                 ],
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _showLogoutDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.withOpacity(0.8),
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                  ),
+                  icon: Icon(Icons.logout, size: 18.sp),
+                  label: Text(
+                    'Logout',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
             ],
           ],
@@ -913,5 +959,87 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+  }
+
+  void _showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.logout, color: Colors.red, size: 24.sp),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'Logout',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Are you sure you want to log out of your account?',
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: Colors.grey[700],
+              height: 1.4,
+            ),
+          ),
+          actionsPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+              child: Text('Cancel', style: TextStyle(fontSize: 14.sp)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Close dialog first
+                try {
+                  await FirebaseAuth.instance.signOut();
+
+                  if (!mounted) return;
+
+                  // ✅ Return to AuthWrapper directly
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AuthWrapper()),
+                    (route) => false,
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Wishlist coming soon')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.logout, size: 18),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+              ),
+              label: Text('Logout', style: TextStyle(fontSize: 14.sp)),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

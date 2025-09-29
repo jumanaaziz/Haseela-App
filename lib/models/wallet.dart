@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Wallet {
   final String id;
   final String userId;
@@ -19,6 +21,41 @@ class Wallet {
     required this.updatedAt,
   });
 
+  // ✅ Convert Firestore document → Wallet object
+  factory Wallet.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+    SnapshotOptions? options,
+  ) {
+    final data = snapshot.data()!;
+    return Wallet(
+      id: snapshot.id,
+      userId: data['userId'] ?? '',
+      totalBalance: (data['totalBalance'] ?? 0.0).toDouble(),
+      spendingBalance: (data['spendingBalance'] ?? 0.0).toDouble(),
+      savingBalance: (data['savingBalance'] ?? 0.0).toDouble(),
+      savingGoal: (data['savingGoal'] ?? 100.0).toDouble(),
+      createdAt: (data['createdAt'] is Timestamp)
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.tryParse(data['createdAt'] ?? '') ?? DateTime.now(),
+      updatedAt: (data['updatedAt'] is Timestamp)
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : DateTime.tryParse(data['updatedAt'] ?? '') ?? DateTime.now(),
+    );
+  }
+
+  // ✅ Convert Wallet object → Firestore document
+  Map<String, dynamic> toFirestore() {
+    return {
+      'userId': userId,
+      'totalBalance': totalBalance,
+      'spendingBalance': spendingBalance,
+      'savingBalance': savingBalance,
+      'savingGoal': savingGoal,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+    };
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -26,7 +63,7 @@ class Wallet {
       'totalBalance': totalBalance,
       'spendingBalance': spendingBalance,
       'savingBalance': savingBalance,
-      'savingGoal': savingGoal, // Updated to match your renamed database field
+      'savingGoal': savingGoal,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -39,8 +76,7 @@ class Wallet {
       totalBalance: (map['totalBalance'] ?? 0.0).toDouble(),
       spendingBalance: (map['spendingBalance'] ?? 0.0).toDouble(),
       savingBalance: (map['savingBalance'] ?? 0.0).toDouble(),
-      savingGoal: (map['savingGoal'] ?? 100.0)
-          .toDouble(), // Updated to match your renamed database field
+      savingGoal: (map['savingGoal'] ?? 100.0).toDouble(),
       createdAt: DateTime.parse(
         map['createdAt'] ?? DateTime.now().toIso8601String(),
       ),
@@ -72,6 +108,5 @@ class Wallet {
     );
   }
 
-  // Helper method to check if saving goal is reached
   bool get isSavingGoalReached => savingBalance >= savingGoal;
 }

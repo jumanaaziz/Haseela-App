@@ -125,7 +125,11 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
         'role': 'child',
       };
 
+      // 4️⃣ Save child metadata to Firestore
       await childDocRef.set(childData);
+
+      // 5️⃣ Initialize required subcollections for the child
+      await _initializeChildSubcollections(childUid);
 
       _showToast(
         '✅ Child account created successfully 🎉',
@@ -138,6 +142,66 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _initializeChildSubcollections(String childUid) async {
+    final parentRef = FirebaseFirestore.instance
+        .collection('Parents')
+        .doc(widget.parentId);
+    final childRef = parentRef.collection('Children').doc(childUid);
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    // 1️⃣ Tasks — create an example placeholder (or leave empty if preferred)
+    final taskRef = childRef.collection('Tasks').doc(); // auto ID
+    batch.set(taskRef, {
+      'allowance': 0,
+      'assignedBy': parentRef,
+      'completedImagePath': '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'dueDate': null,
+      'priority': 'normal',
+      'status': 'new',
+      'taskName': 'Example Task',
+    });
+
+    // 2️⃣ Transaction — example placeholder
+    final transactionRef = childRef.collection('Transaction').doc();
+    batch.set(transactionRef, {
+      'amount': 0,
+      'category': 'General',
+      'date': FieldValue.serverTimestamp(),
+      'description': '',
+      'fromWallet': 'spending',
+      'id': transactionRef.id,
+      'toWallet': 'saving',
+      'type': 'deposit',
+      'userID': childUid,
+    });
+
+    // 3️⃣ Wallet — initialize starting balances
+    final walletRef = childRef.collection('Wallet').doc();
+    batch.set(walletRef, {
+      'createdAt': FieldValue.serverTimestamp(),
+      'id': walletRef.id,
+      'savingBalance': 0,
+      'spendingBalance': 0,
+      'totalBalance': 0,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'userId': childUid,
+    });
+
+    // 4️⃣ Wishlist — example placeholder
+    final wishlistRef = childRef.collection('Wishlist').doc();
+    batch.set(wishlistRef, {
+      'createdAt': FieldValue.serverTimestamp(),
+      'itemName': 'Example Item',
+      'itemPrice': 0,
+      'progress': 0,
+      'statuss': 'pending', // 👈 matches your original field name exactly
+    });
+
+    await batch.commit();
   }
 
   @override

@@ -23,6 +23,7 @@ class Task {
   final IconData? categoryIcon;
   final Color? categoryColor;
   final String? completedImagePath;
+  final String? image; // 👈 add this
 
   Task({
     required this.id,
@@ -37,6 +38,7 @@ class Task {
     this.categoryIcon,
     this.categoryColor,
     this.completedImagePath,
+    this.image,
   });
 
   /// 🔄 Convert Firestore document to Task object
@@ -87,6 +89,7 @@ class Task {
           : null,
       assignedBy: assignedByRef,
       completedImagePath: data['completedImagePath'],
+      image: data['image'],
     );
   }
 

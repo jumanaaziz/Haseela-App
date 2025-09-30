@@ -55,19 +55,20 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
       ).hasMatch(username);
     });
 
-    // ✅ Optional: Check if username is already taken in Firestore
     if (_childUsernameHasMinLength &&
         _childUsernameHasNoSpaces &&
         _childUsernameHasOnlyAllowedChars) {
       final doc = await FirebaseFirestore.instance
-          .collection(
-            'ChildrenUsernames',
-          ) // 🔸 use a separate collection for children
+          .collection('ChildrenUsernames') // ✅ separate collection
           .doc(username)
           .get();
 
       setState(() {
         _isChildUsernameAvailable = !doc.exists;
+      });
+    } else {
+      setState(() {
+        _isChildUsernameAvailable = true; // Reset or neutral state
       });
     }
   }
@@ -169,6 +170,18 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
 
       // 4️⃣ Save child metadata to Firestore
       await childDocRef.set(childData);
+
+      // 5️⃣ Add username under the parent's "Usernames" subcollection
+      await FirebaseFirestore.instance
+          .collection('Usernames')
+          .doc(username) // username as doc ID for fast lookup
+          .set({
+            'childId': childUid,
+            'parentId': widget.parentId,
+            'username': username,
+            'type': 'child', // optional: helpful if you also store parents here
+            'createdAt': FieldValue.serverTimestamp(),
+          });
 
       // 5️⃣ Initialize required subcollections for the child
       await _initializeChildSubcollections(childUid);

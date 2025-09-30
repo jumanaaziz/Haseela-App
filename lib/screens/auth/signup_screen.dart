@@ -35,6 +35,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _usernameHasMinLength = false;
   bool _usernameHasNoSpaces = false;
   bool _usernameHasOnlyAllowedChars = false;
+  bool _isUsernameUnique = true;
 
   @override
   void initState() {
@@ -54,15 +55,36 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
   }
 
-  void _checkUsernameRequirements() {
-    final username = _usernameController.text;
+  void _checkUsernameRequirements() async {
+    final username = _usernameController.text.trim();
+
+    // ✅ Basic checks first
     setState(() {
-      _usernameHasMinLength = username.length >= 4; // or 6, your choice
+      _usernameHasMinLength = username.length >= 4;
       _usernameHasNoSpaces = !username.contains(' ');
       _usernameHasOnlyAllowedChars = RegExp(
         r'^[a-zA-Z0-9._]+$',
       ).hasMatch(username);
     });
+
+    // ✅ Only check uniqueness if the username passes the basic rules
+    if (_usernameHasMinLength &&
+        _usernameHasNoSpaces &&
+        _usernameHasOnlyAllowedChars) {
+      final doc = await FirebaseFirestore.instance
+          .collection('Usernames')
+          .doc(username)
+          .get();
+
+      setState(() {
+        _isUsernameUnique = !doc.exists; // true if username is available
+      });
+    } else {
+      setState(() {
+        _isUsernameUnique =
+            true; // Don't show error if basic rules aren't met yet
+      });
+    }
   }
 
   Future<void> _signUp() async {
@@ -87,12 +109,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
           );
 
       final uid = credential.user!.uid;
+      final username = _usernameController.text.trim();
 
-      // 2️⃣ Create parent document in Firestore
+      // 2️⃣ Check if username is already taken (optional but recommended)
+      final existingUsernameDoc = await FirebaseFirestore.instance
+          .collection('Usernames')
+          .doc(username)
+          .get();
+
+      if (existingUsernameDoc.exists) {
+        throw Exception(
+          'This username is already taken. Please choose another.',
+        );
+      }
+
+      // 3️⃣ Create parent document in Firestore
       await FirebaseFirestore.instance.collection('Parents').doc(uid).set({
         'firstName': _firstNameController.text.trim(),
         'lastName': _lastNameController.text.trim(),
-        'username': _usernameController.text.trim(),
+        'username': username,
         'email': _emailController.text.trim(),
         'phoneNumber': '05${_phoneController.text.trim()}',
         'avatar': null,
@@ -100,7 +135,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'role': 'parent',
       });
 
-      // 3️⃣ Navigate to parent profile screen
+      // 4️⃣ Store username in separate "Usernames" collection for quick lookup
+      await FirebaseFirestore.instance
+          .collection('Usernames')
+          .doc(username)
+          .set({
+            'parentId': uid,
+            'username': username,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+      // 5️⃣ Navigate to parent profile screen
       if (context.mounted) {
         Navigator.pushReplacement(
           context,
@@ -221,14 +266,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       child: _buildTextField(
                                         'First Name',
                                         _firstNameController,
+                                        // ⬅️ This stops typing after 30 characters
                                         validator: (val) {
                                           if (val == null || val.isEmpty) {
                                             return 'Enter first name';
                                           }
+                                          // Check length between 2 and 30 characters
+                                          if (val.length < 2) {
+                                            return 'at least 2 char long';
+                                          }
+
+                                          if (val.length > 30) {
+                                            return 'no more than 30 char long';
+                                          }
                                           if (!RegExp(
                                             r'^[a-zA-Z\s]+$',
                                           ).hasMatch(val)) {
-                                            return 'First name must contain only letters';
+                                            return 'only letters';
                                           }
                                           return null;
                                         },
@@ -243,10 +297,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                           if (val == null || val.isEmpty) {
                                             return 'Enter last name';
                                           }
+                                          if (val.length < 2) {
+                                            return 'at least 2 characters';
+                                          }
+
+                                          if (val.length > 30) {
+                                            return 'no more than 30 char';
+                                          }
                                           if (!RegExp(
                                             r'^[a-zA-Z\s]+$',
                                           ).hasMatch(val)) {
-                                            return 'Last name must contain only letters';
+                                            return 'only letters';
                                           }
                                           return null;
                                         },
@@ -258,8 +319,41 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 _buildTextField(
                                   'Username',
                                   _usernameController,
-                                  validator: (val) =>
-                                      val!.isEmpty ? 'Enter username' : null,
+                                  validator: (val) {
+                                    {
+                                      if (val == null || val.isEmpty) {
+                                        return 'Username is required';
+                                      }
+
+                                      // Check for spaces
+                                      if (val.contains(' ')) {
+                                        return 'Username cannot contain spaces';
+                                      }
+
+                                      // Check if only letters, numbers, or underscore
+                                      if (!RegExp(
+                                        r'^[a-zA-Z0-9_]+$',
+                                      ).hasMatch(val)) {
+                                        return 'Username can only contain letters, numbers, and underscores';
+                                      }
+
+                                      // Check if starts with letter (not number or special character)
+                                      if (!RegExp(r'^[a-zA-Z]').hasMatch(val)) {
+                                        return 'Username must start with a letter';
+                                      }
+
+                                      // Check length between 4 and 20 characters
+                                      if (val.length < 4) {
+                                        return 'Username must be at least 4 characters long';
+                                      }
+
+                                      if (val.length > 20) {
+                                        return 'Username must be no more than 20 characters long';
+                                      }
+
+                                      return null;
+                                    }
+                                  },
                                 ),
                                 SizedBox(height: 8.h),
                                 if (_usernameController.text.isNotEmpty)
@@ -392,12 +486,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     bool isPassword = false,
     TextInputType keyboardType = TextInputType.text,
     String? Function(String?)? validator,
+    int? maxLength, // ⬅️ add this
   }) {
     return TextFormField(
       controller: controller,
       obscureText: isPassword,
       keyboardType: keyboardType,
       validator: validator,
+      maxLength: maxLength, // ⬅️ forward it to TextFormField
+
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
@@ -554,6 +651,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             'Only letters, numbers, . or _',
             _usernameHasOnlyAllowedChars,
           ),
+          _buildRequirementItem('Username is available', _isUsernameUnique),
         ],
       ),
     );

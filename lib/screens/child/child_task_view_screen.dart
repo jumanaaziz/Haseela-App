@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '/models/child.dart';
 import '/models/task.dart';
@@ -8,7 +7,6 @@ import '/models/wallet.dart';
 import '../services/haseela_service.dart';
 import '../../widgets/custom_bottom_nav.dart'; // adjust the path if it's in another folder
 import 'child_home_screen.dart';
-import 'spending_wallet_screen.dart';
 
 class ChildTaskViewScreen extends StatefulWidget {
   final String parentId;
@@ -25,14 +23,15 @@ class ChildTaskViewScreen extends StatefulWidget {
 }
 
 class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
-  int _navBarIndex = 1;
+  int _navBarIndex =
+      1; // For bottom navigation (0=Home, 1=Tasks, 2=Wishlist, 3=Leaderboard)
+  int _taskTabIndex = 0; // For internal task tabs (0=New, 1=Pending, 2=Done)
   final HaseelaService _haseelaService = HaseelaService();
 
   late String _currentParentId;
   late String _currentChildId;
 
   Child? _currentChild;
-  Wallet? _userWallet;
 
   @override
   void initState() {
@@ -40,17 +39,6 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
     _currentParentId = widget.parentId;
     _currentChildId = widget.childId;
     _loadChildProfile();
-
-    // 👇 Listen for wallet updates and store the latest wallet
-    _haseelaService.getWalletForChild(_currentParentId, _currentChildId).listen(
-      (wallet) {
-        if (mounted) {
-          setState(() {
-            _userWallet = wallet;
-          });
-        }
-      },
-    );
   }
 
   void _onNavTap(BuildContext context, int index) {
@@ -308,6 +296,10 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
           );
         },
       ),
+      bottomNavigationBar: CustomBottomNavigationBar(
+        currentIndex: 1, // ✅ Tasks tab highlighted
+        onTap: (index) => _onNavTap(context, index),
+      ),
     );
   }
 
@@ -513,7 +505,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Hi, $childName!',
+                            'Your Tasks, $childName',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize:
@@ -522,7 +514,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                             ),
                           ),
                           Text(
-                            "Let's complete some tasks",
+                            "Let’s make today count!",
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.9),
                               fontSize:
@@ -637,8 +629,8 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
             child: _buildToggleButton(
               'New',
               Icons.assignment,
-              _navBarIndex == 0,
-              () => setState(() => _navBarIndex = 0),
+              _taskTabIndex == 0,
+              () => setState(() => _taskTabIndex = 0),
             ),
           ),
           SizedBox(width: MediaQuery.of(context).size.width * 0.015),
@@ -646,8 +638,8 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
             child: _buildToggleButton(
               'Pending',
               Icons.schedule,
-              _navBarIndex == 1,
-              () => setState(() => _navBarIndex = 1),
+              _taskTabIndex == 1,
+              () => setState(() => _taskTabIndex = 1),
             ),
           ),
           SizedBox(width: MediaQuery.of(context).size.width * 0.015),
@@ -655,8 +647,8 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
             child: _buildToggleButton(
               'Done',
               Icons.check_circle,
-              _navBarIndex == 2,
-              () => setState(() => _navBarIndex = 2),
+              _taskTabIndex == 2,
+              () => setState(() => _taskTabIndex = 2),
             ),
           ),
         ],
@@ -669,7 +661,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
     List<Task> pendingTasks,
     List<Task> doneTasks,
   ) {
-    switch (_navBarIndex) {
+    switch (_taskTabIndex) {
       case 0:
         return _buildNewTasks(newTasks);
       case 1:

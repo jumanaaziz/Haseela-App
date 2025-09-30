@@ -252,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Text(
                   'Retry',
-                  style: TextStyle(fontFamily: 'SF Pro Text'),
+                  style: TextStyle(fontFamily: 'SF Pro Text', fontSize: 16.sp),
                 ),
               ),
             ],
@@ -280,7 +280,8 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: CustomBottomNavigationBar(
         currentIndex: 0, // ✅ Home tab highlighted
         onTap: (index) {
-          // ✅ ChildMainWrapper handles actual tab switching
+          // The actual navigation logic is now in _onNavTap
+          _onNavTap(context, index);
         },
       ),
     );
@@ -310,7 +311,9 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(20.r),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: Colors.black.withOpacity(
+                0.1,
+              ), // Used withOpacity for responsiveness
               blurRadius: 20.r,
               offset: Offset(0, 8.h),
             ),
@@ -335,7 +338,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           border: Border.all(color: Colors.white, width: 3.w),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
+                              color: Colors.black.withOpacity(
+                                0.1,
+                              ), // Used withOpacity for responsiveness
                               blurRadius: 10.r,
                               offset: Offset(0, 4.h),
                             ),
@@ -428,7 +433,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: 0.9),
+                          color: Colors.white.withOpacity(
+                            0.9,
+                          ), // Used withOpacity for responsiveness
                           fontFamily: 'SF Pro Text',
                         ),
                       ),
@@ -489,6 +496,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
+              SizedBox(height: 20.h), // Added vertical space before button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -532,7 +540,9 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(
             fontSize: 12.sp,
             fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.8),
+            color: Colors.white.withOpacity(
+              0.8,
+            ), // Used withOpacity for responsiveness
             fontFamily: 'SF Pro Text',
           ),
         ),
@@ -571,6 +581,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Spending and Saving Cards
         Row(
+          crossAxisAlignment:
+              CrossAxisAlignment.start, // Align cards to the top
           children: [
             Expanded(
               child: _buildWalletCard(
@@ -610,7 +622,9 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(20.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: Colors.black.withOpacity(
+              0.1,
+            ), // Used withOpacity for responsiveness
             blurRadius: 20.r,
             offset: Offset(0, 8.h),
           ),
@@ -624,7 +638,9 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: EdgeInsets.all(12.w),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withOpacity(
+                    0.2,
+                  ), // Used withOpacity for responsiveness
                   borderRadius: BorderRadius.circular(12.r),
                 ),
                 child: Icon(
@@ -643,7 +659,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.9),
+                        color: Colors.white.withOpacity(
+                          0.9,
+                        ), // Used withOpacity for responsiveness
                         fontFamily: 'SF Pro Text',
                       ),
                     ),
@@ -706,7 +724,9 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(16.r),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: Colors.black.withOpacity(
+                0.05,
+              ), // Used withOpacity for responsiveness
               blurRadius: 10.r,
               offset: Offset(0, 4.h),
             ),
@@ -720,7 +740,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: EdgeInsets.all(8.w),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
+                    color: color.withOpacity(
+                      0.1,
+                    ), // Used withOpacity for responsiveness
                     borderRadius: BorderRadius.circular(8.r),
                   ),
                   child: Icon(icon, color: color, size: 20.sp),
@@ -819,6 +841,9 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.r),
+        ),
         title: Text(
           "Update Avatar",
           style: TextStyle(
@@ -827,46 +852,60 @@ class _HomeScreenState extends State<HomeScreen> {
             fontFamily: 'SF Pro Text',
           ),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Upload from device option
-            GestureDetector(
-              onTap: () async {
-                Navigator.pop(context);
-                await _pickImageFromGallery();
-              },
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(16.w),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF643FDB).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(color: const Color(0xFF643FDB)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.photo_camera,
-                      color: const Color(0xFF643FDB),
-                      size: 24.sp,
-                    ),
-                    SizedBox(width: 12.w),
-                    Text(
-                      "Upload Photo from Device",
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.w600,
+        // IMPORTANT: Wrap content in SingleChildScrollView to handle vertical overflow
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Upload from device option
+              GestureDetector(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _pickImageFromGallery();
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(16.w),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF643FDB).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: const Color(0xFF643FDB)),
+                  ),
+                  child: Row(
+                    // Use MainAxisAlignment.start or Center (you were using Center)
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    // Use MainAxisSize.min to prevent the Row from pushing boundaries if possible
+                    mainAxisSize: MainAxisSize
+                        .min, // This helps constrain the row to its children
+                    children: [
+                      Icon(
+                        Icons.photo_camera,
                         color: const Color(0xFF643FDB),
-                        fontFamily: 'SF Pro Text',
+                        size: 24.sp,
                       ),
-                    ),
-                  ],
+                      SizedBox(width: 12.w),
+                      // 🌟 FIX: Wrap the Text widget in an Expanded widget 🌟
+                      // This forces the Text to take up the remaining space
+                      // and apply automatic line wrapping if necessary.
+                      Expanded(
+                        child: Text(
+                          "Upload Photo from Device",
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF643FDB),
+                            fontFamily: 'SF Pro Text',
+                          ),
+                          // You can also add overflow: TextOverflow.ellipsis
+                          // if you prefer truncation over wrapping on extremely small screens.
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -876,6 +915,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 color: const Color(0xFFA29EB6),
                 fontFamily: 'SF Pro Text',
+                fontSize: 14.sp,
               ),
             ),
           ),
@@ -1023,19 +1063,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Wishlist coming soon')),
+                    SnackBar(
+                      content: Text('An error occurred during logout: $e'),
+                      backgroundColor: const Color(0xFFFF6A5D),
+                    ),
                   );
                 }
               },
-              icon: const Icon(Icons.logout, size: 18),
+              icon: Icon(Icons.logout, size: 18.sp),
+              label: Text('Logout', style: TextStyle(fontSize: 14.sp)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.r),
+                  borderRadius: BorderRadius.circular(10.r),
                 ),
               ),
-              label: Text('Logout', style: TextStyle(fontSize: 14.sp)),
             ),
           ],
         );

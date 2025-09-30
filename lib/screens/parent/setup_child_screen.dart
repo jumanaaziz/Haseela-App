@@ -23,12 +23,54 @@ class SetupChildScreen extends StatefulWidget {
 }
 
 class _SetupChildScreenState extends State<SetupChildScreen> {
+  final TextEditingController _childUsernameController =
+      TextEditingController();
+
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _pinController = TextEditingController();
   bool _isLoading = false;
+
+  bool _childUsernameHasMinLength = false;
+  bool _childUsernameHasNoSpaces = false;
+  bool _childUsernameHasOnlyAllowedChars = false;
+  bool _isChildUsernameAvailable = true; // optional uniqueness check
+
+  @override
+  void initState() {
+    super.initState();
+    _childUsernameController.addListener(_checkChildUsernameRequirements);
+  }
+
+  void _checkChildUsernameRequirements() async {
+    final username = _childUsernameController.text.trim();
+
+    setState(() {
+      _childUsernameHasMinLength = username.length >= 3;
+      _childUsernameHasNoSpaces = !username.contains(' ');
+      _childUsernameHasOnlyAllowedChars = RegExp(
+        r'^[a-zA-Z0-9._]+$',
+      ).hasMatch(username);
+    });
+
+    // ✅ Optional: Check if username is already taken in Firestore
+    if (_childUsernameHasMinLength &&
+        _childUsernameHasNoSpaces &&
+        _childUsernameHasOnlyAllowedChars) {
+      final doc = await FirebaseFirestore.instance
+          .collection(
+            'ChildrenUsernames',
+          ) // 🔸 use a separate collection for children
+          .doc(username)
+          .get();
+
+      setState(() {
+        _isChildUsernameAvailable = !doc.exists;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -517,9 +559,18 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Username is required';
               if (v.length < 3) return 'Username must be at least 3 characters';
+              if (v.contains(' ')) return 'No spaces allowed';
+              if (!RegExp(r'^[a-zA-Z0-9._]+$').hasMatch(v)) {
+                return 'Only letters, numbers, . or _ are allowed';
+              }
               return null;
             },
           ),
+          // ✅ Add this below
+          SizedBox(height: 8.h),
+          if (_childUsernameController.text.isNotEmpty)
+            _buildChildUsernameRequirements(),
+
           SizedBox(height: 20.h),
           _buildFormField(
             _emailController,
@@ -533,8 +584,13 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
             keyboardType: TextInputType.emailAddress,
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Email is required';
-              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v))
-                return 'Please enter a valid email';
+
+              final emailPattern =
+                  r'^[\w\.-]+@(gmail\.com|outlook\.com|hotmail\.com|live\.com)$';
+              if (!RegExp(emailPattern).hasMatch(v.trim().toLowerCase())) {
+                return 'Please enter a valid Gmail, Outlook, Hotmail, or Live email';
+              }
+
               return null;
             },
           ),
@@ -557,6 +613,64 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
                 return 'PIN must contain only numbers';
               return null;
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequirementItem(String text, bool isValid) {
+    return Row(
+      children: [
+        Icon(
+          isValid ? Icons.check_circle : Icons.radio_button_unchecked,
+          size: 16.sp,
+          color: isValid ? Colors.green : Colors.grey,
+        ),
+        SizedBox(width: 8.w),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 12.sp,
+            color: isValid ? Colors.green : Colors.grey[600],
+            fontWeight: isValid ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChildUsernameRequirements() {
+    return Container(
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Username Requirements:',
+            style: TextStyle(
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          _buildRequirementItem(
+            'At least 3 characters',
+            _childUsernameHasMinLength,
+          ),
+          _buildRequirementItem('No spaces', _childUsernameHasNoSpaces),
+          _buildRequirementItem(
+            'Only letters, numbers, . or _',
+            _childUsernameHasOnlyAllowedChars,
+          ),
+          _buildRequirementItem(
+            'Username is available',
+            _isChildUsernameAvailable,
           ),
         ],
       ),

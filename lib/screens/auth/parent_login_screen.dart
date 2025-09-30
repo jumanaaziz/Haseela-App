@@ -39,14 +39,14 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
     try {
       String emailToLogin;
 
-      // ✅ Step 1: Check if identifier looks like an email
+      // ✅ Step 1: Check if identifier is email
       final emailRegex = RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$');
       if (emailRegex.hasMatch(identifier)) {
         emailToLogin = identifier;
       } else {
-        // ✅ Step 2: Treat as username → lookup email in Firestore
+        // ✅ Step 2: Treat as username → lookup email in "Parents" collection
         final querySnapshot = await FirebaseFirestore.instance
-            .collection('Users') // 👈 adjust collection name if needed
+            .collection('Parents')
             .where('username', isEqualTo: identifier)
             .limit(1)
             .get();
@@ -61,7 +61,7 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
         emailToLogin = querySnapshot.docs.first['email'];
       }
 
-      // ✅ Step 3: Login with the resolved email
+      // ✅ Step 3: Login with resolved email
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailToLogin,
         password: password,

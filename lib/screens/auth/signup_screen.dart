@@ -32,10 +32,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isLoading = false;
   bool _isPasswordVisible = false;
 
+  bool _usernameHasMinLength = false;
+  bool _usernameHasNoSpaces = false;
+  bool _usernameHasOnlyAllowedChars = false;
+
   @override
   void initState() {
     super.initState();
     _passwordController.addListener(_checkPasswordRequirements);
+    _usernameController.addListener(_checkUsernameRequirements);
   }
 
   void _checkPasswordRequirements() {
@@ -46,6 +51,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _hasLowercase = RegExp(r'[a-z]').hasMatch(password);
       _hasNumber = RegExp(r'[0-9]').hasMatch(password);
       _hasSpecialChar = RegExp(r'[!@#\$%\^&\*]').hasMatch(password);
+    });
+  }
+
+  void _checkUsernameRequirements() {
+    final username = _usernameController.text;
+    setState(() {
+      _usernameHasMinLength = username.length >= 4; // or 6, your choice
+      _usernameHasNoSpaces = !username.contains(' ');
+      _usernameHasOnlyAllowedChars = RegExp(
+        r'^[a-zA-Z0-9._]+$',
+      ).hasMatch(username);
     });
   }
 
@@ -245,6 +261,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   validator: (val) =>
                                       val!.isEmpty ? 'Enter username' : null,
                                 ),
+                                SizedBox(height: 8.h),
+                                if (_usernameController.text.isNotEmpty)
+                                  _buildUsernameRequirements(),
+
                                 SizedBox(height: 15.h),
                                 _buildTextField(
                                   'Email',
@@ -506,6 +526,36 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildUsernameRequirements() {
+    return Container(
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Username Requirements:',
+            style: TextStyle(
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          _buildRequirementItem('At least 4 characters', _usernameHasMinLength),
+          _buildRequirementItem('No spaces', _usernameHasNoSpaces),
+          _buildRequirementItem(
+            'Only letters, numbers, . or _',
+            _usernameHasOnlyAllowedChars,
+          ),
+        ],
+      ),
     );
   }
 }

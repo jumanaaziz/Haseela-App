@@ -12,6 +12,7 @@ import 'saving_wallet_screen.dart';
 import 'transfer_screen.dart';
 import '../../widgets/custom_bottom_nav.dart'; // adjust the path if needed
 import 'package:haseela_app/screens/child/child_task_view_screen.dart';
+import 'package:haseela_app/screens/child/wishlist_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:haseela_app/screens/auth_wrapper.dart';
 
@@ -95,11 +96,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
         break;
-      case 2:
-        // 🔸 Wishlist tab placeholder
-        ScaffoldMessenger.of(
+        
+         // ✅ Navigate to Wishlist
+        Navigator.pushReplacement(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Wishlist coming soon')));
+              MaterialPageRoute(
+            builder: (_) => WishlistScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
+        );
         break;
       case 3:
         // 🔸 Leaderboard tab placeholder

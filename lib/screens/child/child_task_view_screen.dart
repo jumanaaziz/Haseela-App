@@ -7,6 +7,7 @@ import '/models/wallet.dart';
 import '../services/haseela_service.dart';
 import '../../widgets/custom_bottom_nav.dart'; // adjust the path if it's in another folder
 import 'child_home_screen.dart';
+import 'wishlist_screen.dart';
 
 class ChildTaskViewScreen extends StatefulWidget {
   final String parentId;
@@ -63,9 +64,16 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         // Already on Tasks → do nothing
         break;
       case 2:
-        ScaffoldMessenger.of(
+        // ✅ Navigate to Wishlist
+        Navigator.pushReplacement(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Wishlist coming soon')));
+          MaterialPageRoute(
+            builder: (_) => WishlistScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
+        );
         break;
       case 3:
         ScaffoldMessenger.of(context).showSnackBar(
@@ -224,7 +232,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
     );
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Color(0xFFF8F8F8),
       body: StreamBuilder<List<Task>>(
         stream: _haseelaService.getTasksForChild(
           _currentParentId,
@@ -324,14 +332,14 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.grey[700],
+                      color: Color(0xFF333333),
                     ),
                   ),
                   SizedBox(height: 12),
                   Text(
                     'Please check your internet connection\nand try again.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 14, color: Color(0xFF333333)),
                   ),
                   SizedBox(height: 20),
                   ElevatedButton(
@@ -417,7 +425,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   Text(
                     'Make sure your Firebase project is configured\nand the documents exist in Firestore',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12, color: Color(0xFF333333)),
                   ),
                 ],
               ),
@@ -437,7 +445,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(color: Color(0xFF6366F1)),
+                CircularProgressIndicator(color: Color(0xFF643FDB)),
                 SizedBox(height: 16),
                 Text('Loading your tasks...'),
               ],
@@ -468,8 +476,8 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF6366F1), // Purple-blue
-            Color(0xFFEC4899), // Pink
+            Color(0xFF80D8A0), // Light green
+            Color(0xFFA080D8), // Light purple/lavender
           ],
         ),
       ),
@@ -687,7 +695,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
           horizontal: MediaQuery.of(context).size.width * 0.015,
         ),
         decoration: BoxDecoration(
-          color: isSelected ? Color(0xFF6366F1) : Colors.grey[100],
+          color: isSelected ? Color(0xFF643FDB) : Colors.grey[100],
           borderRadius: BorderRadius.circular(
             MediaQuery.of(context).size.width * 0.015,
           ),
@@ -797,7 +805,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
               style: TextStyle(
                 fontSize: MediaQuery.of(context).size.width * 0.045,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: Color(0xFF333333),
               ),
               textAlign: TextAlign.center,
             ),
@@ -873,7 +881,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                       style: TextStyle(
                         fontSize: MediaQuery.of(context).size.width * 0.045,
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
+                        color: Color(0xFF333333),
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -970,7 +978,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                     textAlign: TextAlign.center,
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF6366F1).withOpacity(0.7),
+                    backgroundColor: Color(0xFF643FDB).withOpacity(0.7),
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(
                       vertical: MediaQuery.of(context).size.height * 0.02,
@@ -1005,7 +1013,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: Color(0xFF47C272),
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(
                       vertical: MediaQuery.of(context).size.height * 0.02,
@@ -1062,7 +1070,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
+                    color: Color(0xFF333333),
                   ),
                 ),
                 SizedBox(height: 4),
@@ -1155,7 +1163,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
+                    color: Color(0xFF333333),
                   ),
                 ),
                 SizedBox(height: 4),
@@ -1236,7 +1244,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError ? Colors.red : Color(0xFF47C272),
         duration: Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
       ),
@@ -1301,7 +1309,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
+                    color: Color(0xFF333333),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -1312,7 +1320,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   'We\'re working hard to bring you the ability to upload photos for task completion. Stay tuned for updates!',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey[600],
+                    color: Color(0xFF333333),
                     height: 1.4,
                   ),
                   textAlign: TextAlign.center,
@@ -1359,7 +1367,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                       Navigator.of(context).pop();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[600],
+                      backgroundColor: Color(0xFF643FDB),
                       foregroundColor: Colors.white,
                       padding: EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -1410,7 +1418,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                 'Task: ${task.taskName}',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey[700],
+                  color: Color(0xFF333333),
                 ),
               ),
               SizedBox(height: 8),
@@ -1463,7 +1471,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                 Navigator.of(context).pop(true);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
+                backgroundColor: Color(0xFF47C272),             
                 foregroundColor: Colors.white,
               ),
               child: Text('Complete Task'),
@@ -1670,7 +1678,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                                   (context, child, loadingProgress) {
                                     if (loadingProgress == null) return child;
                                     return Container(
-                                      color: Colors.grey[800],
+                                      color: Color(0xFF333333),
                                       child: Center(
                                         child: CircularProgressIndicator(
                                           value:
@@ -1690,7 +1698,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                               errorBuilder: (context, error, stackTrace) {
                                 print('Error loading image in dialog: $error');
                                 return Container(
-                                  color: Colors.grey[800],
+                                  color: Color(0xFF333333),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
@@ -1720,7 +1728,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                                   'Error loading local image in dialog: $error',
                                 );
                                 return Container(
-                                  color: Colors.grey[800],
+                                  color: Color(0xFF333333),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [

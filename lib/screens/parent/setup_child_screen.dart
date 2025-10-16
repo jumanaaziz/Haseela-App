@@ -163,6 +163,7 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
         'email': email,
         'pin_hash': pinHash,
         'pin_salt': salt,
+        'pin_display': pin, // Store PIN for parent to view (in real app, consider security implications)
         'createdAt': FieldValue.serverTimestamp(),
         'active': true,
         'role': 'child',
@@ -191,7 +192,9 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
         ToastificationType.success,
       );
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context, true); // Return true to indicate success
+      }
     } catch (e) {
       _showToast('Error: $e', ToastificationType.error);
     } finally {

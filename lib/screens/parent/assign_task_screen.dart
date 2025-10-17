@@ -375,11 +375,22 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
       await taskDoc.set(taskData);
 
       if (!mounted) return;
+      
+      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Task assigned successfully ✅')),
+        const SnackBar(
+          content: Text('Task assigned successfully ✅'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
       );
 
-      // Your TaskManagementScreen listens via StreamBuilder, so no need to return Task
+      // Add small delay to ensure message shows before navigation
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (!mounted) return;
+      
+      // Navigate back
       Navigator.pop(context);
     } catch (e) {
       _showError("Error assigning task: $e");

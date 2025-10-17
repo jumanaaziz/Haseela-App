@@ -4,6 +4,7 @@ class ChildOption {
   final String lastName;
   final String? avatar; // URL or null
   final String? email;
+  final String? username;
 
   ChildOption({
     required this.id,
@@ -11,6 +12,7 @@ class ChildOption {
     required this.lastName,
     this.avatar,
     this.email,
+    this.username,
   });
 
   factory ChildOption.fromFirestore(String id, Map<String, dynamic> data) {
@@ -24,6 +26,7 @@ class ChildOption {
       lastName: ln,
       avatar: (av == null || av.isEmpty) ? null : av, // null if empty
       email: (data['email'] as String?)?.trim(),
+      username: (data['username'] as String?)?.trim(),
     );
   }
 

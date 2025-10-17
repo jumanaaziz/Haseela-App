@@ -37,6 +37,7 @@ dependencies:
   cloud_firestore: ^5.6.12
   toastification: ^3.0.2
   flutter_screenutil: ^5.9.0
+  flutter_svg: ^2.0.10+1
   image_picker: ^1.1.2
   crypto: ^3.0.3
   shared_preferences: ^2.2.3
@@ -65,6 +66,15 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  fonts:
+    - family: SPProText
+      fonts:
+        - asset: assets/fonts/SF-Pro-Text-Regular.otf
+          weight: 400
+        - asset: assets/fonts/SF-Pro-Text-Medium.otf
+          weight: 500
+        - asset: assets/fonts/SF-Pro-Text-Bold.otf
+          weight: 700
   assets:
     - assets/icons/riyal.png
     - assets/images/logo.png

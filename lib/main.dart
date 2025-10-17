@@ -24,6 +24,10 @@ class MyApp extends StatelessWidget {
       builder: (context, child) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            fontFamily:
+                'SPProText', // ✅ this makes SP Pro Text the default font
+          ),
           home: const AuthWrapper(),
         );
       },

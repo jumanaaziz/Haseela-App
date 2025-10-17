@@ -311,8 +311,8 @@ class _HomeScreenState extends State<HomeScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF47C272), // Green from semantic colors
-              Color(0xFFB37BE7), // Light purple from overlays
+              Color(0xFFB37BE7), // Green from semantic colors
+              Color.fromARGB(255, 163, 70, 250), // Light purple from overlays
             ],
           ),
           borderRadius: BorderRadius.circular(20.r),

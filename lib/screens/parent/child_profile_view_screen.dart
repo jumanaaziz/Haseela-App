@@ -30,7 +30,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     // Set data immediately in initState
     _childDetails = {
       'firstName': widget.child.firstName,
-      'username': widget.child.username ?? 'N/A',
+      'username': widget.child.username,
       'email': widget.child.email ?? 'N/A',
       'pin_display': '123456', // Default PIN for now
     };
@@ -68,7 +68,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
             setState(() {
               _childDetails = {
                 'firstName': data['firstName'] ?? widget.child.firstName,
-                'username': data['username'] ?? widget.child.username ?? 'N/A',
+                'username': data['username'] ?? widget.child.username,
                 'email': data['email'] ?? widget.child.email ?? 'N/A',
                 'pin_display': data['pin_display'] ?? 'N/A',
               };
@@ -311,7 +311,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                           setState(() {
                             _childDetails = {
                               'firstName': widget.child.firstName,
-                              'username': widget.child.username ?? 'N/A',
+                              'username': widget.child.username,
                               'email': widget.child.email ?? 'N/A',
                               'pin_display': '123456',
                             };

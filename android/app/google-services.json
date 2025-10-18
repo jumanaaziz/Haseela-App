@@ -7,6 +7,44 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:322776951600:android:fd361e7aa7b3b6fcf5f6f5",
+        "android_client_info": {
+          "package_name": "com.Haseelaa.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL90dIxi5ec46mz7s5miEAMQ5z6_P80YU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:322776951600:android:03642d1c3e9ecc82f5f6f5",
+        "android_client_info": {
+          "package_name": "com.example.haseela"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL90dIxi5ec46mz7s5miEAMQ5z6_P80YU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:322776951600:android:7328b6fca2ffa7ebf5f6f5",
         "android_client_info": {
           "package_name": "com.example.haseela_app"

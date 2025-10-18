@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'models/child.dart'; // <-- Task, TaskPriority, TaskStatus
-import 'models/task.dart';
-import 'models/child_options.dart'; // <-- ChildOption model
+import 'package:firebase_auth/firebase_auth.dart'; // ✅ use Auth UID
+import '../../models/child.dart'; // (if used elsewhere)
+import '../../models/task.dart';
+import '../../models/child_options.dart';
 
 class AssignTaskScreen extends StatefulWidget {
   const AssignTaskScreen({super.key});
@@ -15,8 +16,7 @@ class AssignTaskScreen extends StatefulWidget {
 
 class _AssignTaskScreenState extends State<AssignTaskScreen> {
   void _showError(String message) {
-    if (!context.mounted) return; // ✅ this works in modern Flutter
-
+    if (!context.mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
@@ -52,6 +52,9 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
   String? _priorityError;
   String? _allowanceError;
 
+  // ✅ current parent UID
+  String get _uid => FirebaseAuth.instance.currentUser!.uid;
+
   @override
   void initState() {
     super.initState();
@@ -63,7 +66,7 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
     try {
       final snap = await FirebaseFirestore.instance
           .collection("Parents")
-          .doc("parent001")
+          .doc(_uid) // ✅ dynamic parent
           .collection("Children")
           .get();
 
@@ -75,7 +78,7 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
     } catch (e) {
       _showError("Error loading children: $e");
     } finally {
-      setState(() => _loadingChildren = false);
+      if (mounted) setState(() => _loadingChildren = false);
     }
   }
 
@@ -94,10 +97,10 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFFF0FDF4), // Very pale mint green
-            Color(0xFFFEFCE8), // Very pale yellow
-            Color(0xFFF0F9FF), // Very pale blue
-            Color(0xFFFDF2F8), // Very pale pink/peach
+            Color(0xFFF0FDF4),
+            Color(0xFFFEFCE8),
+            Color(0xFFF0F9FF),
+            Color(0xFFFDF2F8),
           ],
           stops: [0.0, 0.3, 0.7, 1.0],
         ),
@@ -193,9 +196,7 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
                             context,
                             initial: _toDate,
                           );
-                          if (picked != null) {
-                            setState(() => _toDate = picked);
-                          }
+                          if (picked != null) setState(() => _toDate = picked);
                         },
                       ),
                       if (_dateError != null)
@@ -269,8 +270,8 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
                         inputFormatters: [
                           FilteringTextInputFormatter.allow(
                             RegExp(r'^\d*\.?\d{0,2}'),
-                          ), // only numbers + 2 decimals
-                          PositiveNumberFormatter(), // ✅ block negatives
+                          ),
+                          PositiveNumberFormatter(),
                         ],
                       ),
 
@@ -350,44 +351,48 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
     }
 
     try {
-      final parentId = "parent001"; // ✅ Replace with actual logged-in parent ID
       final parentRef = FirebaseFirestore.instance
           .collection('Parents')
-          .doc(parentId);
+          .doc(_uid); // ✅
 
-      // ✅ Get the selected child (using your new Child model)
-      final childSnapshot = await parentRef
-          .collection('Children')
-          .doc(_selectedChildId!)
-          .get();
-      final child = Child.fromFirestore(childSnapshot);
-
-      // ✅ Generate new task ID
+      // ✅ write directly under selected child
       final taskDoc = parentRef
           .collection('Children')
-          .doc(child.id)
+          .doc(_selectedChildId!)
           .collection('Tasks')
           .doc();
 
       final taskData = {
         'taskName': trimmedName,
         'allowance': allowance,
-        'status': 'new', // matches TaskStatus.newTask
+        'status': 'new', // matches your TaskStatus.newTask
         'priority': _priority.toString().split('.').last.toLowerCase(),
-        'dueDate': _toDate,
+        'dueDate': _toDate != null ? Timestamp.fromDate(_toDate!) : null, // ✅
         'createdAt': FieldValue.serverTimestamp(),
-        'assignedBy': parentRef,
+        'assignedBy': parentRef, // DocumentReference
       };
 
-      print('Saving task data: $taskData');
       await taskDoc.set(taskData);
-      print('Task saved successfully with ID: ${taskDoc.id}');
 
-      // ✅ Task saved successfully, return to previous screen
+      if (!mounted) return;
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Task assigned successfully ✅'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Add small delay to ensure message shows before navigation
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (!mounted) return;
+      
+      // Navigate back
       Navigator.pop(context);
     } catch (e) {
-      print('Error details: $e');
-      print('Error type: ${e.runtimeType}');
       _showError("Error assigning task: $e");
     }
   }
@@ -401,31 +406,27 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
       lastDate: DateTime(now.year + 5),
       builder: (context, child) {
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            // Prevent oversized text scaling
-            textScaler: const TextScaler.linear(0.9),
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(0.9)),
           child: Center(
             child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 400, // you can also use 400.w with screenutil
-                maxHeight: 600, // or 600.h
-              ),
+              constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
               child: Theme(
                 data: Theme.of(context).copyWith(
-                  colorScheme: ColorScheme.light(
-                    primary: const Color(0xFF7C3AED), // Header background
-                    onPrimary: Colors.white, // Header text
-                    onSurface: const Color(0xFF111827), // Body text
+                  colorScheme: const ColorScheme.light(
+                    primary: Color(0xFF7C3AED),
+                    onPrimary: Colors.white,
+                    onSurface: Color(0xFF111827),
                   ),
                   textButtonTheme: TextButtonThemeData(
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF7C3AED), // Buttons
+                      foregroundColor: const Color(0xFF7C3AED),
                     ),
                   ),
                   dialogTheme: DialogThemeData(
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16), // ✅ correct
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 ),
@@ -605,7 +606,7 @@ class _RiyalSuffix extends StatelessWidget {
         width: 5.w,
         height: 5.w,
         fit: BoxFit.contain,
-        color: const Color(0xFF6B7280), // optional tint
+        color: const Color(0xFF6B7280),
       ),
     );
   }
@@ -618,10 +619,9 @@ class PositiveNumberFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) {
     if (newValue.text.isEmpty) return newValue;
-
     final value = double.tryParse(newValue.text);
     if (value == null || value < 0) {
-      return oldValue; // ❌ reject invalid or negative input
+      return oldValue;
     }
     return newValue;
   }

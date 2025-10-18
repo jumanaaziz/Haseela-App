@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'auth_background.dart';
-import 'login_screen.dart';
-import 'signup_screen.dart';
+import '../auth_background.dart';
+import '../auth/parent_login_screen.dart';
+import '../auth/signup_screen.dart';
+import '../auth/child_login_screen.dart';
 
-class LaunchScreen extends StatelessWidget {
-  const LaunchScreen({Key? key}) : super(key: key);
+class LaunchScreenOld extends StatelessWidget {
+  const LaunchScreenOld({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +14,7 @@ class LaunchScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       body: AuthBackground(
         child: SafeArea(
-          child: Container(
+          child: SizedBox(
             width: double.infinity,
             height: double.infinity,
             child: SingleChildScrollView(
@@ -36,6 +37,7 @@ class LaunchScreen extends StatelessWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
+                            /// 🟣 Logo
                             Image.asset(
                               'assets/images/logo.png',
                               width: 220.w,
@@ -43,8 +45,10 @@ class LaunchScreen extends StatelessWidget {
                               fit: BoxFit.contain,
                             ),
                             SizedBox(height: 60.h),
+
+                            /// 🟣 Title
                             Text(
-                              'Welcome to Haseela',
+                              'Welcome to Haseela!',
                               style: TextStyle(
                                 fontSize: 28.sp,
                                 fontWeight: FontWeight.bold,
@@ -62,6 +66,8 @@ class LaunchScreen extends StatelessWidget {
                               textAlign: TextAlign.center,
                             ),
                             SizedBox(height: 60.h),
+
+                            /// 🟠 Log in as Parent
                             SizedBox(
                               width: double.infinity,
                               height: 50.h,
@@ -70,28 +76,64 @@ class LaunchScreen extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => LoginScreen(),
+                                      builder: (context) =>
+                                          const ParentLoginScreen(),
                                     ),
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Color(0xFF8D61B4),
+                                  backgroundColor: const Color(0xFF8D61B4),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(25.r),
                                   ),
                                   elevation: 2,
                                 ),
                                 child: Text(
-                                  'Log In',
+                                  'Log in as Parent',
                                   style: TextStyle(
                                     fontSize: 16.sp,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.bold, // ✅ Bold
                                     color: Colors.white,
                                   ),
                                 ),
                               ),
                             ),
                             SizedBox(height: 20.h),
+
+                            /// 🟡 Log in as Child
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50.h,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const ChildLoginScreen(),
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF8D61B4),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(25.r),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                child: Text(
+                                  'Log in as Child',
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.bold, // ✅ Bold
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 20.h),
+
+                            /// 🟢 Sign Up (old version)
                             SizedBox(
                               width: double.infinity,
                               height: 50.h,
@@ -100,13 +142,14 @@ class LaunchScreen extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => SignUpScreen(),
+                                      builder: (context) =>
+                                          const SignUpScreen(),
                                     ),
                                   );
                                 },
                                 style: OutlinedButton.styleFrom(
                                   side: BorderSide(
-                                    color: Color(0xFF8D61B4),
+                                    color: const Color(0xFF8D61B4),
                                     width: 2.w,
                                   ),
                                   shape: RoundedRectangleBorder(
@@ -117,8 +160,8 @@ class LaunchScreen extends StatelessWidget {
                                   'Sign Up',
                                   style: TextStyle(
                                     fontSize: 16.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF8D61B4),
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF8D61B4),
                                   ),
                                 ),
                               ),

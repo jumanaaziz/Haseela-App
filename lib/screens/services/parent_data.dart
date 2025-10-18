@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/parent_profile.dart';
+import '../../models/parent_profile.dart';
 
 class ParentDataService {
   static const String parentId = 'parent001';

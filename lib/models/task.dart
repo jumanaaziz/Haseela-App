@@ -5,7 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// - `newTask`: When first assigned (child sees "new").
 /// - `pending`: When child marks complete but waiting for parent approval.
 /// - `done`: When parent approves / final state.
-enum TaskStatus { newTask, pending, done }
+/// - `rejected`: When parent declines the task completion.
+enum TaskStatus { newTask, pending, done, rejected }
 
 /// ✅ Task Priority
 enum TaskPriority { low, normal, high }
@@ -22,7 +23,9 @@ class Task {
   final DocumentReference assignedBy;
   final IconData? categoryIcon;
   final Color? categoryColor;
-  final String? completedImagePath;
+  final String?
+  completedImagePath; // URL of image uploaded by child when completing task
+  final String? image; // 👈 add this
 
   Task({
     required this.id,
@@ -37,6 +40,7 @@ class Task {
     this.categoryIcon,
     this.categoryColor,
     this.completedImagePath,
+    this.image,
   });
 
   /// 🔄 Convert Firestore document to Task object
@@ -87,10 +91,11 @@ class Task {
           : null,
       assignedBy: assignedByRef,
       completedImagePath: data['completedImagePath'],
+      image: data['image'],
     );
   }
 
-  /// 🔄 Normalize Firestore values into "new" / "pending" / "done"
+  /// 🔄 Normalize Firestore values into "new" / "pending" / "done" / "rejected"
   static String normalizeStatus(dynamic raw) {
     final value = (raw ?? '').toString().toLowerCase();
     switch (value) {
@@ -105,6 +110,8 @@ class Task {
       case 'done':
       case 'approved': // legacy
         return 'done';
+      case 'rejected':
+        return 'rejected';
       default:
         return 'new';
     }
@@ -179,6 +186,7 @@ class Task {
       categoryIcon: icon,
       categoryColor: color,
       completedImagePath: completedImagePath,
+      image: image,
     );
   }
 
@@ -191,6 +199,8 @@ class Task {
         return TaskStatus.pending;
       case 'done':
         return TaskStatus.done;
+      case 'rejected':
+        return TaskStatus.rejected;
       default:
         return TaskStatus.newTask;
     }

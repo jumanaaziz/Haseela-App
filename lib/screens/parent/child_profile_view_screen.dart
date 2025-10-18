@@ -30,7 +30,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     // Set data immediately in initState
     _childDetails = {
       'firstName': widget.child.firstName,
-      'username': 'N/A', // ChildOption doesn't have username field
+      'username': widget.child.username,
       'email': widget.child.email ?? 'N/A',
       'pin_display': '123456', // Default PIN for now
     };
@@ -66,7 +66,12 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
         if (data != null && data['firstName'] != null && data['firstName'].toString().trim().isNotEmpty) {
           if (mounted) {
             setState(() {
-              _childDetails = data;
+              _childDetails = {
+                'firstName': data['firstName'] ?? widget.child.firstName,
+                'username': data['username'] ?? widget.child.username,
+                'email': data['email'] ?? widget.child.email ?? 'N/A',
+                'pin_display': data['pin_display'] ?? 'N/A',
+              };
             });
             print('=== UPDATED WITH FIRESTORE DATA ===');
           }
@@ -306,7 +311,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                           setState(() {
                             _childDetails = {
                               'firstName': widget.child.firstName,
-                              'username': 'N/A', // ChildOption doesn't have username field
+                              'username': widget.child.username,
                               'email': widget.child.email ?? 'N/A',
                               'pin_display': '123456',
                             };

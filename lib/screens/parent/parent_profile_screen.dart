@@ -32,7 +32,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _passwordController = TextEditingController();
   File? _selectedImage;
 
   Map<String, String?> _fieldErrors = {};
@@ -120,7 +119,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     if (_parentProfile == null) return;
     _firstNameController.text = _parentProfile!.firstName;
     _lastNameController.text = _parentProfile!.lastName;
-    _passwordController.text = _parentProfile!.password; // if you store it
   }
 
   Future<void> _loadParentProfile() async {
@@ -157,7 +155,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
       final updatedProfile = _parentProfile!.copyWith(
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
-        password: _passwordController.text.trim(),
       );
 
       await FirebaseFirestore.instance
@@ -257,9 +254,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
         break;
       case 'lastName':
         errorMessage = ParentProfile.validateLastName(value);
-        break;
-      case 'password':
-        errorMessage = ParentProfile.validatePassword(value);
         break;
     }
 
@@ -591,22 +585,20 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
             onChanged: (v) => _validateField('lastName', v),
             fieldType: 'lastName',
           ),
-          _buildDisplayField(
+          _buildNonEditableField(
             label: 'Username',
             value: _parentProfile!.username,
+            message: 'Username cannot be changed',
           ),
-          _buildDisplayField(label: 'Email', value: _parentProfile!.email),
-          _buildTextField(
-            controller: _passwordController,
-            label: 'Password',
-            validator: ParentProfile.validatePassword,
-            obscureText: true,
-            onChanged: (v) => _validateField('password', v),
-            fieldType: 'password',
+          _buildNonEditableField(
+            label: 'Email', 
+            value: _parentProfile!.email,
+            message: 'Email cannot be changed',
           ),
-          _buildDisplayField(
+          _buildNonEditableField(
             label: 'Phone Number',
             value: _parentProfile!.phoneNumber,
+            message: 'Phone number cannot be changed',
           ),
           SizedBox(height: 16.h),
           Row(
@@ -713,6 +705,50 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
               style: TextStyle(
                 color: Colors.white.withOpacity(0.8),
                 fontSize: 12.sp,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNonEditableField({
+    required String label, 
+    required String value, 
+    required String message
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 10.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 12.sp,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          GestureDetector(
+            onTap: () {
+              _showToast(message, ToastificationType.info);
+            },
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: Colors.white.withOpacity(0.2)),
+              ),
+              child: Text(
+                value,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 12.sp,
+                ),
               ),
             ),
           ),

@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'dart:convert';
 import '../../models/user_profile.dart';
 import '../../models/wallet.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firebase_service.dart';
 import 'spending_wallet_screen.dart';
@@ -16,14 +13,14 @@ import 'package:haseela_app/screens/child/child_task_view_screen.dart';
 import 'package:haseela_app/screens/child/wishlist_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:haseela_app/screens/auth_wrapper.dart';
-import 'package:http/http.dart' as http;
+import 'auto_currency_scanner_screen.dart'; // Import the new scanner
 
 class HomeScreen extends StatefulWidget {
   final String parentId;
   final String childId;
 
   const HomeScreen({Key? key, required this.parentId, required this.childId})
-      : super(key: key);
+    : super(key: key);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -41,11 +38,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late final String parentId;
   late final String childId;
-
-  static const String _sightengineUser = '209062856';
-  static const String _sightengineSecret = '8ujGHfdeRzqJevsGymcThN4zFy3DeBxL';
-  static const String _roboflowApiKey = 'VMf2fKPJgmup0N31XCxN';
-  static const String _roboflowModelId = 'saudi_currencies-4ipct/5';
 
   @override
   void initState() {
@@ -305,10 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF47C272),
-              Color(0xFFB37BE7),
-            ],
+            colors: [Color(0xFF47C272), Color(0xFFB37BE7)],
           ),
           borderRadius: BorderRadius.circular(20.r),
           boxShadow: [
@@ -600,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(10.r),
               ),
               child: Icon(
-                Icons.add_a_photo,
+                Icons.camera_alt,
                 color: const Color(0xFF2D3748),
                 size: 22.sp,
               ),
@@ -611,7 +600,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Add money to your wallet',
+                    'Scan money automatically',
                     style: TextStyle(
                       fontSize: 16.sp,
                       fontWeight: FontWeight.w600,
@@ -621,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   SizedBox(height: 4.h),
                   Text(
-                    'Scan your money to save it in your wallet',
+                    'Just point your camera at Saudi currency',
                     style: TextStyle(
                       fontSize: 12.sp,
                       color: const Color(0xFFA29EB6),
@@ -861,7 +850,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _editProfileAvatar() {
-    // Predefined avatar URLs - REPLACE WITH YOUR FIREBASE URLS
     final List<String> avatarOptions = [
       'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-2.png?alt=media&token=b9f1e645-9931-4502-8bd7-2762cadf3325',
       'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-1.png?alt=media&token=65696973-beb7-434f-be28-b7190455632f',
@@ -898,7 +886,7 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, index) {
               final avatarUrl = avatarOptions[index];
               final isSelected = this.avatarUrl == avatarUrl;
-              
+
               return GestureDetector(
                 onTap: () async {
                   Navigator.pop(context);
@@ -908,8 +896,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: isSelected 
-                          ? const Color(0xFF643FDB) 
+                      color: isSelected
+                          ? const Color(0xFF643FDB)
                           : Colors.grey.shade300,
                       width: isSelected ? 3.w : 2.w,
                     ),
@@ -943,7 +931,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: CircularProgressIndicator(
                             value: loadingProgress.expectedTotalBytes != null
                                 ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
+                                      loadingProgress.expectedTotalBytes!
                                 : null,
                             strokeWidth: 2,
                             valueColor: AlwaysStoppedAnimation<Color>(
@@ -983,7 +971,6 @@ class _HomeScreenState extends State<HomeScreen> {
       print('Child ID: $childId');
       print('Avatar URL: $avatarUrl');
 
-      // Show loading
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -1017,20 +1004,18 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
 
-      // Save to Firebase
       final success = await FirebaseService.updateChildAvatar(
         parentId,
         childId,
         avatarUrl,
       );
 
-      // Close loading
       if (mounted) Navigator.pop(context);
 
       if (success) {
         setState(() {
           this.avatarUrl = avatarUrl;
-          avatarImage = null; // Clear any local file
+          avatarImage = null;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1051,7 +1036,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      
+
       print('Error selecting avatar: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1063,350 +1048,49 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  double? _extractAmountFromClassName(String className) {
-    if (className.isEmpty) return null;
-
-    String cleaned = className.toLowerCase().trim();
-    
-    print('   🔍 Parsing class name: "$className"');
-
-    // convert text to numbers
-    final Map<String, double> textToNumber = {
-      'one': 1.0,
-      'five': 5.0,
-      'ten': 10.0,
-      'fifty': 50.0,
-      'hundred': 100.0,
-      'fivehundred': 500.0,
-      'five hundred': 500.0,
-      '1': 1.0,
-      '5': 5.0,
-      '10': 10.0,
-      '50': 50.0,
-      '100': 100.0,
-      '500': 500.0,
-    };
-
-    cleaned = cleaned
-        .replaceAll('riyal', '')
-        .replaceAll('riyals', '')
-        .replaceAll('sar', '')
-        .replaceAll('sr', '')
-        .replaceAll('saudi', '')
-        .replaceAll('_', ' ')
-        .replaceAll('-', ' ')
-        .replaceAll('  ', ' ')
-        .trim();
-
-    print('After cleaning: "$cleaned"');
-
-    // Check if the cleaned string matches a text number
-    for (var entry in textToNumber.entries) {
-      if (cleaned == entry.key || cleaned.contains(entry.key)) {
-        final amount = entry.value;
-        if (_isValidSaudiDenomination(amount)) {
-          print('   ✅ Extracted from text: $amount SAR');
-          return amount;
-        }
-      }
-    }
-
-    // If not a text number, try to extract numeric value
-    final RegExp numberPattern = RegExp(r'(\d+)');
-    final match = numberPattern.firstMatch(cleaned);
-
-    if (match != null) {
-      final String numStr = match.group(1)!;
-      final double? amount = double.tryParse(numStr);
-      
-      if (amount != null && _isValidSaudiDenomination(amount)) {
-        print('   ✅ Extracted from number: $amount SAR');
-        return amount;
-      } else {
-        print('   ⚠️ Invalid denomination: $amount');
-      }
-    }
-
-    print('   ❌ Could not extract amount');
-    return null;
-  }
-
-  // Helper to validate Saudi currency denominations
-  bool _isValidSaudiDenomination(double amount) {
-    const validDenominations = [1.0, 5.0, 10.0, 50.0, 100.0, 500.0];
-    return validDenominations.contains(amount);
-  }
-
-  Future<double?> _extractAmountWithRoboflow(File file) async {
-    try {
-      print('🔍 Starting Roboflow Saudi Currency Detection...');
-
-      final List<int> imageBytes = await file.readAsBytes();
-      final String base64Image = base64Encode(imageBytes);
-
-      final Uri uri = Uri.parse(
-        'https://detect.roboflow.com/$_roboflowModelId'
-        '?api_key=$_roboflowApiKey'
-        '&confidence=50'  
-        '&overlap=30',
-      );
-
-      print('Roboflow URL: $uri');
-
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: base64Image,
-      );
-
-      print(' Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
-      if (response.statusCode != 200) {
-        print('API request failed with status ${response.statusCode}');
-        return null;
-      }
-
-      final Map<String, dynamic> jsonResponse = json.decode(response.body);
-      final predictions = jsonResponse['predictions'] as List?;
-
-      if (predictions == null || predictions.isEmpty) {
-        print('No currency detected in image');
-        return null;
-      }
-
-      // Store all valid detections
-      List<Map<String, dynamic>> validDetections = [];
-
-      print('\n ALL DETECTIONS:');
-      for (var prediction in predictions) {
-        final String className =
-            (prediction['class'] as String?)?.toLowerCase() ?? '';
-        final double confidence = (prediction['confidence'] ?? 0).toDouble();
-        final double? amount = _extractAmountFromClassName(className);
-
-        print('   • Class: "$className" | Amount: ${amount ?? "N/A"} SAR | Confidence: ${(confidence * 100).toStringAsFixed(1)}%');
-
-        if (amount != null && amount > 0 && confidence >= 0.5) {
-          validDetections.add({
-            'amount': amount,
-            'confidence': confidence,
-            'className': className,
-          });
-        }
-      }
-
-      if (validDetections.isEmpty) {
-        print('No valid currency detections found (confidence >= 50%)');
-        return null;
-      }
-
-      // Sort by confidence (highest first)
-      validDetections.sort((a, b) => 
-        (b['confidence'] as double).compareTo(a['confidence'] as double)
-      );
-
-      // Get the most confident detection
-      final bestDetection = validDetections.first;
-      final double bestAmount = bestDetection['amount'];
-      final double bestConfidence = bestDetection['confidence'];
-      final String bestClass = bestDetection['className'];
-
-      print('\n SELECTED: $bestAmount SAR from "$bestClass" (${(bestConfidence * 100).toStringAsFixed(1)}% confidence)');
-
-      // If multiple detections have similar confidence, show warning
-      if (validDetections.length > 1) {
-        final secondBest = validDetections[1];
-        final double secondAmount = secondBest['amount'];
-        final double secondConfidence = secondBest['confidence'];
-        
-        if ((bestConfidence - secondConfidence) < 0.15) {  
-          print('WARNING: Multiple similar detections found:');
-          print('   1st: $bestAmount SAR (${(bestConfidence * 100).toStringAsFixed(1)}%)');
-          print('   2nd: $secondAmount SAR (${(secondConfidence * 100).toStringAsFixed(1)}%)');
-        }
-      }
-
-      return bestAmount;
-    } catch (e, stackTrace) {
-      print('Roboflow error: $e');
-      print('Stack trace: $stackTrace');
-      return null;
-    }
-  }
-
+  // NEW: Auto-scanning money flow with live detection
   Future<void> _onAddMoneyFlow() async {
-    try {
-      final XFile? captured = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-        maxWidth: 1920,
-        maxHeight: 1920,
-        preferredCameraDevice: CameraDevice.rear,
-      );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AutoCurrencyScannerScreen(
+          onAmountDetected: (amount) async {
+            // Add detected amount only to total wallet balance
+            final double newTotal = userWallet!.totalBalance + amount;
 
-      if (captured == null) return;
+            final bool success = await FirebaseService.updateChildWalletBalance(
+              parentId,
+              childId,
+              totalBalance: newTotal,
+            );
 
-      final File localFile = File(captured.path);
+            if (success) {
+              setState(() {
+                userWallet = Wallet(
+                  id: userWallet!.id,
+                  userId: userWallet!.userId,
+                  totalBalance: newTotal,
+                  spendingBalance: userWallet!
+                      .spendingBalance, // Keep original spending balance
+                  savingBalance:
+                      userWallet!.savingBalance, // Keep original saving balance
+                  savingGoal: userWallet!.savingGoal,
+                  createdAt: userWallet!.createdAt,
+                  updatedAt: DateTime.now(),
+                );
+              });
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Center(
-          child: Container(
-            padding: EdgeInsets.all(20.w),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF643FDB)),
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  'Detecting currency',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'SF Pro Text',
-                  ),
-                ),
-              ],
-            ),
-          ),
+              _showInfoDialog(
+                'Success! 🎉',
+                '${amount.toStringAsFixed(0)} SAR has been added to your total wallet',
+              );
+            } else {
+              _showToast('Failed to update wallet. Please try again.');
+            }
+          },
         ),
-      );
-
-      final double? amount = await _extractAmountWithRoboflow(localFile);
-
-      if (mounted) Navigator.pop(context);
-
-      if (amount == null || amount <= 0) {
-        _showInfoDialog(
-          'Unable to detect currency',
-          'Please make sure:\n'
-          '• The banknote is clearly visible\n'
-          '• The lighting is good\n'
-          '• The entire note is in frame\n'
-          '• The image is not blurry',
-        );
-        return;
-      }
-
-      final bool? confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.r),
-          ),
-          title: Text(
-            'Confirm Amount',
-            style: TextStyle(
-              fontFamily: 'SF Pro Text',
-              fontWeight: FontWeight.bold,
-              fontSize: 18.sp,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.check_circle,
-                color: Color(0xFF47C272),
-                size: 48.sp,
-              ),
-              SizedBox(height: 16.h),
-              Text(
-                '${amount.toStringAsFixed(0)} SAR',
-                style: TextStyle(
-                  fontSize: 32.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF643FDB),
-                  fontFamily: 'SF Pro Text',
-                ),
-              ),
-              SizedBox(height: 8.h),
-              Text(
-                'Add this amount to your wallet?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Color(0xFF718096),
-                  fontFamily: 'SF Pro Text',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(
-                'Cancel',
-                style: TextStyle(
-                  color: Color(0xFFA29EB6),
-                  fontFamily: 'SF Pro Text',
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF47C272),
-              ),
-              child: Text(
-                'Confirm',
-                style: TextStyle(
-                  fontFamily: 'SF Pro Text',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-
-      if (confirmed != true) return;
-
-      final double newTotal = userWallet!.totalBalance + amount;
-      final double newSpending = userWallet!.spendingBalance + amount;
-
-      final bool success = await FirebaseService.updateChildWalletBalance(
-        parentId,
-        childId,
-        totalBalance: newTotal,
-        spendingBalance: newSpending,
-      );
-
-      if (success) {
-        setState(() {
-          userWallet = Wallet(
-            id: userWallet!.id,
-            userId: userWallet!.userId,
-            totalBalance: newTotal,
-            spendingBalance: newSpending,
-            savingBalance: userWallet!.savingBalance,
-            savingGoal: userWallet!.savingGoal,
-            createdAt: userWallet!.createdAt,
-            updatedAt: DateTime.now(),
-          );
-        });
-
-        _showInfoDialog(
-          'Success! 🎉',
-          '${amount.toStringAsFixed(0)} SAR has been added to your spending wallet',
-        );
-      } else {
-        _showToast('Failed to update wallet. Please try again.');
-      }
-    } catch (e) {
-      print('❌ Add money error: $e');
-      _showToast('An error occurred: $e');
-    }
+      ),
+    );
   }
 
   void _showInfoDialog(String title, String message) {
@@ -1481,8 +1165,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 1.4,
             ),
           ),
-          actionsPadding:
-              EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+          actionsPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),

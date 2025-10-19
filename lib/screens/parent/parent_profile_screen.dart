@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,6 +10,7 @@ import '../../widgets/custom_bottom_nav.dart';
 import '../parent/task_management_screen.dart';
 import '../auth_wrapper.dart';
 import 'setup_child_screen.dart';
+import 'child_profile_view_screen.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
@@ -19,17 +21,17 @@ class ParentProfileScreen extends StatefulWidget {
   State<ParentProfileScreen> createState() => _ParentProfileScreenState();
 }
 
-class _ParentProfileScreenState extends State<ParentProfileScreen> {
+class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsBindingObserver {
   ParentProfile? _parentProfile;
   List<ChildOption> _children = [];
   String _parentUsername = ''; // ✅ store parent's username from Firestore
   bool _isExpanded = false;
   bool _isEditing = false;
+  StreamSubscription<QuerySnapshot>? _childrenSubscription;
 
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _passwordController = TextEditingController();
   File? _selectedImage;
 
   Map<String, String?> _fieldErrors = {};
@@ -40,8 +42,76 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadParentProfile();
-    _loadChildren();
+    _setupChildrenListener();
+  }
+
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _childrenSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Real-time listener will handle updates automatically
+      print('App resumed, real-time listener is active');
+    }
+  }
+
+  // Set up real-time listener for children
+  void _setupChildrenListener() {
+    print('=== SETTING UP REAL-TIME CHILDREN LISTENER ===');
+    _childrenSubscription = FirebaseFirestore.instance
+        .collection("Parents")
+        .doc(_uid)
+        .collection("Children")
+        .snapshots()
+        .listen(
+      (QuerySnapshot snapshot) {
+        print('=== REAL-TIME UPDATE RECEIVED ===');
+        print('Snapshot size: ${snapshot.docs.length}');
+        
+        final childrenList = snapshot.docs
+            .map((doc) {
+              print('Processing child doc: ${doc.id}');
+              print('Child data: ${doc.data()}');
+              final childOption = ChildOption.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
+              print('Created ChildOption: ID=${childOption.id}, firstName=${childOption.firstName}');
+              return childOption;
+            })
+            .where((c) {
+              final hasName = c.firstName.trim().isNotEmpty;
+              print('Child ${c.firstName} (ID: ${c.id}) has valid name: $hasName');
+              return hasName;
+            })
+            .toList();
+        
+        print('Filtered to ${childrenList.length} children');
+        print('Children names: ${childrenList.map((c) => c.firstName).toList()}');
+
+        if (mounted) {
+          setState(() {
+            _children = childrenList;
+          });
+          print('=== CHILDREN LIST UPDATED IN REAL-TIME ===');
+          print('New children count: ${_children.length}');
+          print('Children in state: ${_children.map((c) => c.firstName).toList()}');
+        } else {
+          print('Widget not mounted, skipping setState');
+        }
+      },
+      onError: (error) {
+        print('Error in children listener: $error');
+        if (mounted) {
+          _showToast('Error loading children: $error', ToastificationType.error);
+        }
+      },
+    );
   }
 
   // Fill the editing controllers from the loaded _parentProfile.
@@ -49,7 +119,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     if (_parentProfile == null) return;
     _firstNameController.text = _parentProfile!.firstName;
     _lastNameController.text = _parentProfile!.lastName;
-    _passwordController.text = _parentProfile!.password; // if you store it
   }
 
   Future<void> _loadParentProfile() async {
@@ -78,24 +147,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     _populateControllers();
   }
 
-  Future<void> _loadChildren() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection("Parents")
-          .doc(_uid)
-          .collection("Children")
-          .get();
-
-      setState(() {
-        _children = snap.docs
-            .map((doc) => ChildOption.fromFirestore(doc.id, doc.data()))
-            .where((c) => c.firstName.trim().isNotEmpty)
-            .toList();
-      });
-    } catch (e) {
-      _showToast('Error loading children: $e', ToastificationType.error);
-    }
-  }
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
@@ -104,7 +155,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
       final updatedProfile = _parentProfile!.copyWith(
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
-        password: _passwordController.text.trim(),
       );
 
       await FirebaseFirestore.instance
@@ -142,14 +192,17 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     );
   }
 
-  void _showSetupChildDialog() {
-    Navigator.push(
+  void _showSetupChildDialog() async {
+    print('=== NAVIGATING TO SETUP CHILD SCREEN ===');
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) =>
             SetupChildScreen(parentId: _uid, parentUsername: _parentUsername),
       ),
     );
+    print('=== RETURNED FROM SETUP CHILD SCREEN ===');
+    print('Real-time listener will automatically update the list');
   }
 
   void _onNavTap(BuildContext context, int index) {
@@ -201,9 +254,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         break;
       case 'lastName':
         errorMessage = ParentProfile.validateLastName(value);
-        break;
-      case 'password':
-        errorMessage = ParentProfile.validatePassword(value);
         break;
     }
 
@@ -535,22 +585,20 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
             onChanged: (v) => _validateField('lastName', v),
             fieldType: 'lastName',
           ),
-          _buildDisplayField(
+          _buildNonEditableField(
             label: 'Username',
             value: _parentProfile!.username,
+            message: 'Username cannot be changed',
           ),
-          _buildDisplayField(label: 'Email', value: _parentProfile!.email),
-          _buildTextField(
-            controller: _passwordController,
-            label: 'Password',
-            validator: ParentProfile.validatePassword,
-            obscureText: true,
-            onChanged: (v) => _validateField('password', v),
-            fieldType: 'password',
+          _buildNonEditableField(
+            label: 'Email', 
+            value: _parentProfile!.email,
+            message: 'Email cannot be changed',
           ),
-          _buildDisplayField(
+          _buildNonEditableField(
             label: 'Phone Number',
             value: _parentProfile!.phoneNumber,
+            message: 'Phone number cannot be changed',
           ),
           SizedBox(height: 16.h),
           Row(
@@ -665,6 +713,50 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     );
   }
 
+  Widget _buildNonEditableField({
+    required String label, 
+    required String value, 
+    required String message
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 10.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 12.sp,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          GestureDetector(
+            onTap: () {
+              _showToast(message, ToastificationType.info);
+            },
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: Colors.white.withOpacity(0.2)),
+              ),
+              child: Text(
+                value,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 12.sp,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildChildrenSection(
     bool isTablet,
     bool isDesktop,
@@ -673,19 +765,46 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Children',
-          style: TextStyle(
-            fontSize: isDesktop
-                ? 22.sp
-                : isTablet
-                ? 20.sp
-                : isSmallScreen
-                ? 16.sp
-                : 18.sp,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Children',
+              style: TextStyle(
+                fontSize: isDesktop
+                    ? 22.sp
+                    : isTablet
+                    ? 20.sp
+                    : isSmallScreen
+                    ? 16.sp
+                    : 18.sp,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            IconButton(
+              onPressed: () async {
+                print('=== NAVIGATING TO SETUP CHILD SCREEN (Add Button) ===');
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SetupChildScreen(
+                      parentId: _uid,
+                      parentUsername: _parentUsername,
+                    ),
+                  ),
+                );
+                print('=== RETURNED FROM SETUP CHILD SCREEN (Add Button) ===');
+                print('Real-time listener will automatically update the list');
+              },
+              icon: Icon(
+                Icons.add_circle_outline,
+                color: const Color(0xFF8B5CF6),
+                size: isDesktop ? 28.sp : isTablet ? 26.sp : isSmallScreen ? 20.sp : 24.sp,
+              ),
+              tooltip: 'Add Child',
+            ),
+          ],
         ),
         SizedBox(
           height: isDesktop
@@ -756,133 +875,122 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                     color: Colors.grey[600],
                   ),
                 ),
-                SizedBox(
-                  height: isDesktop
-                      ? 20.h
-                      : isTablet
-                      ? 16.h
-                      : isSmallScreen
-                      ? 12.h
-                      : 16.h,
-                ),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SetupChildScreen(
-                            parentId: _uid, // parent Firestore document ID
-                            parentUsername:
-                                _parentUsername, // parent's username
-                          ),
-                        ),
-                      );
-                    },
-
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B5CF6),
-                      foregroundColor: Colors.white,
-                      elevation: 2,
-                      shadowColor: const Color(0xFF8B5CF6).withOpacity(0.3),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          isDesktop
-                              ? 12.r
-                              : isTablet
-                              ? 10.r
-                              : isSmallScreen
-                              ? 8.r
-                              : 10.r,
-                        ),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        vertical: isDesktop
-                            ? 16.h
-                            : isTablet
-                            ? 14.h
-                            : isSmallScreen
-                            ? 10.h
-                            : 12.h,
-                        horizontal: isDesktop
-                            ? 24.w
-                            : isTablet
-                            ? 20.w
-                            : isSmallScreen
-                            ? 16.w
-                            : 20.w,
-                      ),
-                    ),
-                    icon: Icon(
-                      Icons.person_add,
-                      size: isDesktop
-                          ? 20.sp
-                          : isTablet
-                          ? 18.sp
-                          : isSmallScreen
-                          ? 14.sp
-                          : 16.sp,
-                    ),
-                    label: Text(
-                      'Set up child account',
-                      style: TextStyle(
-                        fontSize: isDesktop
-                            ? 16.sp
-                            : isTablet
-                            ? 15.sp
-                            : isSmallScreen
-                            ? 12.sp
-                            : 14.sp,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           )
         else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final screenWidth = constraints.maxWidth;
-              final isWideScreen = screenWidth > 800;
-              final cardHeight = isWideScreen
-                  ? 180.h
-                  : isDesktop
-                  ? 160.h
-                  : isTablet
-                  ? 140.h
-                  : isSmallScreen
-                  ? 110.h
-                  : 130.h;
-
-              return SizedBox(
-                height: cardHeight,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _children.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == 0)
-                      return _buildAddChildCard(
-                        isTablet,
-                        isDesktop,
-                        isSmallScreen,
-                        isWideScreen,
-                      );
-                    return _buildChildCard(
-                      _children[index - 1],
-                      isTablet,
-                      isDesktop,
-                      isSmallScreen,
-                      isWideScreen,
-                    );
-                  },
-                ),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _children.length,
+            itemBuilder: (context, index) {
+              return _buildVerticalChildCard(
+                _children[index],
+                isTablet,
+                isDesktop,
+                isSmallScreen,
               );
             },
           ),
       ],
+    );
+  }
+
+  Widget _buildVerticalChildCard(
+    ChildOption child,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 12.h),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12.r),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChildProfileViewScreen(
+                  child: child,
+                  parentId: _uid,
+                ),
+              ),
+            );
+          },
+          child: Padding(
+            padding: EdgeInsets.all(16.w),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r,
+                  backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  child: child.avatar != null
+                      ? ClipOval(
+                          child: Image.network(
+                            child.avatar!,
+                            width: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
+                            height: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stack) {
+                              return Text(
+                                child.initial,
+                                style: TextStyle(
+                                  fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF8B5CF6),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                      : Text(
+                          child.initial,
+                          style: TextStyle(
+                            fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF8B5CF6),
+                          ),
+                        ),
+                ),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        child.firstName,
+                        style: TextStyle(
+                          fontSize: isDesktop ? 18.sp : isTablet ? 16.sp : isSmallScreen ? 14.sp : 16.sp,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        child.lastName,
+                        style: TextStyle(
+                          fontSize: isDesktop ? 14.sp : isTablet ? 13.sp : isSmallScreen ? 11.sp : 12.sp,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.grey[400],
+                  size: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1144,8 +1252,9 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(borderRadius),
-          onTap: () {
-            Navigator.push(
+          onTap: () async {
+            print('=== NAVIGATING TO SETUP CHILD SCREEN (Card) ===');
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => SetupChildScreen(
@@ -1154,6 +1263,8 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                 ),
               ),
             );
+            print('=== RETURNED FROM SETUP CHILD SCREEN (Card) ===');
+            print('Real-time listener will automatically update the list');
           },
 
           child: Padding(

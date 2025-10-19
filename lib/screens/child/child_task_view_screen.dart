@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import '/models/child.dart';
 import '/models/task.dart';
 import '/models/wallet.dart';
@@ -28,11 +29,16 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
       1; // For bottom navigation (0=Home, 1=Tasks, 2=Wishlist, 3=Leaderboard)
   int _taskTabIndex = 0; // For internal task tabs (0=New, 1=Pending, 2=Done)
   final HaseelaService _haseelaService = HaseelaService();
+  final ImagePicker _imagePicker = ImagePicker();
 
   late String _currentParentId;
   late String _currentChildId;
 
   Child? _currentChild;
+
+  // Image upload state
+  Map<String, bool> _uploadingImages = {}; // taskId -> isUploading
+  Map<String, String?> _selectedImages = {}; // taskId -> imagePath
 
   @override
   void initState() {
@@ -956,21 +962,63 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
 
           SizedBox(height: MediaQuery.of(context).size.height * 0.025),
 
+          // Image preview (if selected)
+          if (_selectedImages[task.id] != null) ...[
+            SizedBox(height: MediaQuery.of(context).size.height * 0.015),
+            Container(
+              height: 120,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(
+                  File(_selectedImages[task.id]!),
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[200],
+                      child: Icon(Icons.error, color: Colors.red),
+                    );
+                  },
+                ),
+              ),
+            ),
+            SizedBox(height: MediaQuery.of(context).size.height * 0.015),
+          ],
+
           // Task completion buttons
           Row(
             children: [
               // Upload photo button
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    _pickImageFromGallery(task);
-                  },
-                  icon: Icon(
-                    Icons.photo_library,
-                    size: MediaQuery.of(context).size.width * 0.045,
-                  ),
+                  onPressed: _uploadingImages[task.id] == true
+                      ? null
+                      : () {
+                          _pickImageFromGallery(task);
+                        },
+                  icon: _uploadingImages[task.id] == true
+                      ? SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.045,
+                          height: MediaQuery.of(context).size.width * 0.045,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          Icons.photo_library,
+                          size: MediaQuery.of(context).size.width * 0.045,
+                        ),
                   label: Text(
-                    'Upload Photo',
+                    _uploadingImages[task.id] == true
+                        ? 'Uploading...'
+                        : 'Upload Photo',
                     style: TextStyle(
                       fontSize: MediaQuery.of(context).size.width * 0.04,
                       fontWeight: FontWeight.w600,
@@ -978,7 +1026,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                     textAlign: TextAlign.center,
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF643FDB).withOpacity(0.7),
+                    backgroundColor: _uploadingImages[task.id] == true
+                        ? Color(0xFF643FDB).withOpacity(0.5)
+                        : Color(0xFF643FDB).withOpacity(0.7),
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(
                       vertical: MediaQuery.of(context).size.height * 0.02,
@@ -998,9 +1048,11 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
               // Complete task button
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    _completeTaskWithoutPhoto(task);
-                  },
+                  onPressed: _uploadingImages[task.id] == true
+                      ? null
+                      : () {
+                          _completeTaskWithoutPhoto(task);
+                        },
                   icon: Icon(
                     Icons.check_circle_outline,
                     size: MediaQuery.of(context).size.width * 0.045,
@@ -1013,7 +1065,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF47C272),
+                    backgroundColor: _uploadingImages[task.id] == true
+                        ? Color(0xFF47C272).withOpacity(0.5)
+                        : Color(0xFF47C272),
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(
                       vertical: MediaQuery.of(context).size.height * 0.02,
@@ -1252,7 +1306,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
   }
 
   Future<void> _pickImageFromGallery(Task task) async {
-    // Show "Coming Soon" bottom sheet
+    // Show image source selection bottom sheet
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1287,25 +1341,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                 ),
                 SizedBox(height: 20),
 
-                // Icon
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: Colors.orange[100],
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                  child: Icon(
-                    Icons.construction,
-                    size: 32,
-                    color: Colors.orange[600],
-                  ),
-                ),
-                SizedBox(height: 16),
-
                 // Title
                 Text(
-                  'Photo Upload Coming Soon!',
+                  'Upload Photo for Task',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -1315,71 +1353,52 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                 ),
                 SizedBox(height: 8),
 
-                // Message
                 Text(
-                  'We\'re working hard to bring you the ability to upload photos for task completion. Stay tuned for updates!',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF333333),
-                    height: 1.4,
-                  ),
+                  'Choose how you want to add a photo',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),
-                SizedBox(height: 20),
+                SizedBox(height: 24),
 
-                // Info box
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Colors.blue[600],
-                        size: 20,
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'This feature will be available in a future update',
-                          style: TextStyle(
-                            color: Colors.blue[700],
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                // Camera option
+                _buildImageSourceOption(
+                  icon: Icons.camera_alt,
+                  title: 'Take Photo',
+                  subtitle: 'Use camera to take a new photo',
+                  color: Colors.blue,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickImage(task, ImageSource.camera);
+                  },
+                ),
+                SizedBox(height: 12),
+
+                // Gallery option
+                _buildImageSourceOption(
+                  icon: Icons.photo_library,
+                  title: 'Choose from Gallery',
+                  subtitle: 'Select an existing photo',
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickImage(task, ImageSource.gallery);
+                  },
                 ),
                 SizedBox(height: 20),
 
-                // Close button
+                // Cancel button
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: TextButton(
                     onPressed: () {
                       Navigator.of(context).pop();
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF643FDB),
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
                     child: Text(
-                      'Got it!',
+                      'Cancel',
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -1390,6 +1409,248 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         );
       },
     );
+  }
+
+  Widget _buildImageSourceOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF333333),
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: Colors.grey[400], size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage(Task task, ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        setState(() {
+          _selectedImages[task.id] = image.path;
+        });
+
+        // Show confirmation dialog
+        bool? confirmed = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.photo_camera, color: Color(0xFF643FDB)),
+                  SizedBox(width: 8),
+                  Text('Confirm Photo Upload'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Are you sure you want to upload this photo and complete the task?',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Task: ${task.taskName}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF333333),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Allowance: +${task.allowance.toStringAsFixed(0)} ﷼',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green[600],
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  // Image preview
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(
+                        File(image.path),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[200],
+                            child: Icon(Icons.error, color: Colors.red),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(false);
+                  },
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(true);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(0xFF643FDB),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text('Upload & Complete'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (confirmed == true) {
+          await _uploadImageAndCompleteTask(task, image);
+        } else {
+          // Remove the selected image if user cancelled
+          setState(() {
+            _selectedImages.remove(task.id);
+          });
+        }
+      }
+    } catch (e) {
+      _showSnackBar('Failed to pick image: ${e.toString()}', true);
+    }
+  }
+
+  Future<void> _uploadImageAndCompleteTask(Task task, XFile imageFile) async {
+    setState(() {
+      _uploadingImages[task.id] = true;
+    });
+
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Uploading Photo'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Uploading your photo and completing task...'),
+              ],
+            ),
+          );
+        },
+      );
+
+      // Upload image to Firebase Storage
+      String imageUrl = await _haseelaService.uploadTaskImage(
+        _currentParentId,
+        _currentChildId,
+        task.id,
+        imageFile,
+      );
+
+      // Update task status with image URL
+      await _haseelaService.updateTaskStatusWithImage(
+        _currentParentId,
+        _currentChildId,
+        task.id,
+        'pending',
+        imageUrl,
+      );
+
+      // Close loading dialog
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // Show success message
+      _showSnackBar(
+        'Photo uploaded successfully! Task completed and waiting for parent approval. +${task.allowance.toStringAsFixed(0)} ﷼',
+        false,
+      );
+
+      // Clear the selected image
+      setState(() {
+        _selectedImages.remove(task.id);
+      });
+    } catch (e) {
+      // Close loading dialog safely
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // Show error message
+      _showSnackBar('Failed to upload photo: ${e.toString()}', true);
+    } finally {
+      setState(() {
+        _uploadingImages[task.id] = false;
+      });
+    }
   }
 
   Future<void> _completeTaskWithoutPhoto(Task task) async {
@@ -1471,7 +1732,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                 Navigator.of(context).pop(true);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF47C272),             
+                backgroundColor: Color(0xFF47C272),
                 foregroundColor: Colors.white,
               ),
               child: Text('Complete Task'),

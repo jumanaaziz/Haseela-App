@@ -482,7 +482,7 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
           ),
           SizedBox(height: 16.h),
 
-          // Goal Input Field
+          // Goal Input Field (without suffix icon)
           TextField(
             controller: _goalController,
             enabled: !_isGoalLocked,
@@ -521,16 +521,6 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                     ? const Color(0xFFFF6A5D)
                     : const Color(0xFF643FDB),
               ),
-              suffixIcon: !_isGoalLocked && _goalController.text.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(
-                        Icons.check_circle,
-                        color: const Color(0xFF47C272),
-                      ),
-                      onPressed: _saveGoal,
-                      tooltip: 'Save Goal',
-                    )
-                  : null,
             ),
             onChanged: (value) {
               if (!_isGoalLocked) {
@@ -540,6 +530,42 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
               }
             },
           ),
+
+          // Save Goal Button - Now visible and prominent
+          if (!_isGoalLocked && _goalController.text.isNotEmpty) ...[
+            SizedBox(height: 12.h),
+            SizedBox(
+              width: double.infinity,
+              height: 48.h,
+              child: ElevatedButton(
+                onPressed: _saveGoal,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF47C272),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  elevation: 2,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, size: 20.sp),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Save Goal',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'SF Pro Text',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
           SizedBox(height: 16.h),
 
           // Progress Bar
@@ -870,15 +896,6 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                     fontFamily: 'SF Pro Text',
                   ),
                 ),
-                SizedBox(height: 2.h),
-                Text(
-                  _formatDate(transaction.date),
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: const Color(0xFFA29EB6),
-                    fontFamily: 'SF Pro Text',
-                  ),
-                ),
               ],
             ),
           ),
@@ -934,21 +951,6 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
         return 'Interest';
       default:
         return 'Savings';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
     }
   }
 

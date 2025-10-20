@@ -202,7 +202,7 @@ class FirebaseService {
           .collection(_childrenSubcollection)
           .doc(childId)
           .collection(_walletSubcollection)
-          .doc('wallet')
+          .doc('wallet001')
           .update(updatedWallet.toMap());
       return true;
     } catch (e) {
@@ -533,14 +533,14 @@ class FirebaseService {
     String childId,
   ) async {
     try {
-      // Create default wallet for child
+      // Create default wallet for child with zero balances
       final wallet = Wallet(
         id: 'wallet001',
         userId: childId,
-        totalBalance: 100.0,
-        spendingBalance: 50.0,
-        savingBalance: 50.0,
-        savingGoal: 100.0, // Default saving goal
+        totalBalance: 0.0,
+        spendingBalance: 0.0,
+        savingBalance: 0.0,
+        savingGoal: 100.0,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );

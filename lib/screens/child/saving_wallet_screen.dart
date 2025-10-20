@@ -27,8 +27,8 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
   late TextEditingController _goalController;
   bool _isGoalSet = false;
   bool _isGoalLocked = false;
-  bool _isSettingNewGoal =
-      false; // New state to control success message visibility
+  bool _isSettingNewGoal = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -38,22 +38,50 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
   }
 
   @override
+  void didUpdateWidget(SavingWalletScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Refresh status if wallet data has changed
+    if (oldWidget.userWallet.savingGoal != widget.userWallet.savingGoal ||
+        oldWidget.userWallet.savingBalance != widget.userWallet.savingBalance ||
+        oldWidget.userWallet.isSavingGoalReached !=
+            widget.userWallet.isSavingGoalReached) {
+      _checkGoalStatus();
+    }
+  }
+
+  @override
   void dispose() {
     _goalController.dispose();
     super.dispose();
   }
 
   void _checkGoalStatus() {
-    // Check if goal is already set (not default 100.0)
-    _isGoalSet = widget.userWallet.savingGoal != 100.0;
+    setState(() {
+      // Check if goal is already set (not default 100.0)
+      _isGoalSet = widget.userWallet.savingGoal != 100.0;
 
-    // Goal is locked if it's set but not reached
-    // Goal is unlocked if it's reached (allows editing for new goal)
-    _isGoalLocked = _isGoalSet && !widget.userWallet.isSavingGoalReached;
+      // Goal is locked if it's set but not reached
+      // Goal is unlocked if it's reached (allows editing for new goal)
+      _isGoalLocked = _isGoalSet && !widget.userWallet.isSavingGoalReached;
 
-    if (_isGoalSet) {
-      _goalController.text = widget.userWallet.savingGoal.toString();
-    }
+      if (_isGoalSet && !_isSettingNewGoal) {
+        _goalController.text = widget.userWallet.savingGoal.toString();
+      }
+
+      // Don't override _isSettingNewGoal if user is actively setting a new goal
+      if (!_isSettingNewGoal) {
+        _isSettingNewGoal = false;
+      }
+    });
+
+    print('=== GOAL STATUS CHECK ===');
+    print('savingGoal: ${widget.userWallet.savingGoal}');
+    print('savingBalance: ${widget.userWallet.savingBalance}');
+    print('isSavingGoalReached: ${widget.userWallet.isSavingGoalReached}');
+    print('_isGoalSet: $_isGoalSet');
+    print('_isGoalLocked: $_isGoalLocked');
+    print('_isSettingNewGoal: $_isSettingNewGoal');
   }
 
   @override
@@ -73,35 +101,69 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
         foregroundColor: const Color(0xFF1C1243),
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(20.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Balance Card
-            _buildBalanceCard(),
-            SizedBox(height: 24.h),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: EdgeInsets.all(20.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Balance Card
+                _buildBalanceCard(),
+                SizedBox(height: 24.h),
 
-            // Savings Goals
-            _buildSavingsGoals(),
-            SizedBox(height: 24.h),
+                // Savings Goals
+                _buildSavingsGoals(),
+                SizedBox(height: 24.h),
 
-            // Transactions Header
-            Text(
-              'Recent Transactions',
-              style: TextStyle(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1C1243),
-                fontFamily: 'SF Pro Text',
+                // Transactions Header
+                Text(
+                  'Recent Transactions',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1C1243),
+                    fontFamily: 'SF Pro Text',
+                  ),
+                ),
+                SizedBox(height: 16.h),
+
+                // Transactions List
+                _buildTransactionsList(),
+              ],
+            ),
+          ),
+
+          // Loading overlay
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: Center(
+                child: Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(20.w),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          color: const Color(0xFF47C272),
+                        ),
+                        SizedBox(height: 16.h),
+                        Text(
+                          'Saving goal...',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w500,
+                            fontFamily: 'SF Pro Text',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-            SizedBox(height: 16.h),
-
-            // Transactions List
-            _buildTransactionsList(),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -193,6 +255,18 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
 
     final newGoal = parsedGoal;
 
+    setState(() {
+      _isLoading = true;
+    });
+
+    print('=== SAVING GOAL ===');
+    print('New goal: $newGoal');
+    print('Current balance: ${widget.userWallet.savingBalance}');
+
+    // Calculate if goal is reached
+    final isGoalReached = widget.userWallet.savingBalance >= newGoal;
+    print('Is goal reached: $isGoalReached');
+
     // Update saving goal in Firebase
     final success = await FirebaseService.updateChildWalletBalance(
       widget.parentId,
@@ -201,54 +275,62 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
     );
 
     if (success) {
+      print('Goal saved to Firebase successfully');
+
+      // Wait a moment for Firebase to process
+      await Future.delayed(Duration(milliseconds: 500));
+
       // Refresh wallet data from database to get updated values
       final refreshedWallet = await FirebaseService.getChildWallet(
         widget.parentId,
         widget.childId,
       );
 
+      setState(() {
+        _isLoading = false;
+      });
+
       if (refreshedWallet != null) {
+        print('Wallet refreshed from Firebase:');
+        print('- savingGoal: ${refreshedWallet.savingGoal}');
+        print('- savingBalance: ${refreshedWallet.savingBalance}');
+        print('- isSavingGoalReached: ${refreshedWallet.isSavingGoalReached}');
+
         // Update the parent widget with fresh data
         widget.onWalletUpdated(refreshedWallet);
 
         // Update local state based on fresh data
-        print('=== SAVE GOAL DEBUG ===');
-        print('Before setState:');
-        print('_isGoalSet: $_isGoalSet');
-        print('_isGoalLocked: $_isGoalLocked');
-        print('_isSettingNewGoal: $_isSettingNewGoal');
-        print(
-          'refreshedWallet.isSavingGoalReached: ${refreshedWallet.isSavingGoalReached}',
-        );
-
         setState(() {
           _isGoalSet = true;
           _isGoalLocked = !refreshedWallet.isSavingGoalReached;
           _isSettingNewGoal = false;
         });
 
-        print('After setState:');
-        print('_isGoalSet: $_isGoalSet');
-        print('_isGoalLocked: $_isGoalLocked');
-        print('_isSettingNewGoal: $_isSettingNewGoal');
+        print('Local state updated:');
+        print('- _isGoalSet: $_isGoalSet');
+        print('- _isGoalLocked: $_isGoalLocked');
+        print('- _isSettingNewGoal: $_isSettingNewGoal');
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               refreshedWallet.isSavingGoalReached
-                  ? 'Savings goal set and unlocked!'
-                  : 'Savings goal set and locked!',
+                  ? '🎉 Goal reached! Wallet unlocked!'
+                  : '🔒 Goal set successfully! Wallet locked until you reach ${newGoal.toStringAsFixed(2)} SAR',
             ),
-            backgroundColor: const Color(0xFF47C272),
-            duration: Duration(seconds: 2),
+            backgroundColor: refreshedWallet.isSavingGoalReached
+                ? const Color(0xFF47C272)
+                : const Color(0xFF643FDB),
+            duration: Duration(seconds: 3),
           ),
         );
       } else {
-        // Fallback if refresh fails
+        print('Failed to refresh wallet from Firebase');
+        // Fallback: calculate locally
+        final isNewGoalReached = widget.userWallet.savingBalance >= newGoal;
         final updatedWallet = widget.userWallet.copyWith(savingGoal: newGoal);
         widget.onWalletUpdated(updatedWallet);
 
-        final isNewGoalReached = widget.userWallet.savingBalance >= newGoal;
         setState(() {
           _isGoalSet = true;
           _isGoalLocked = !isNewGoalReached;
@@ -259,15 +341,22 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
           SnackBar(
             content: Text(
               isNewGoalReached
-                  ? 'Savings goal set and unlocked!'
-                  : 'Savings goal set and locked!',
+                  ? '🎉 Goal reached! Wallet unlocked!'
+                  : '🔒 Goal set successfully! Wallet locked.',
             ),
-            backgroundColor: const Color(0xFF47C272),
-            duration: Duration(seconds: 2),
+            backgroundColor: isNewGoalReached
+                ? const Color(0xFF47C272)
+                : const Color(0xFF643FDB),
+            duration: Duration(seconds: 3),
           ),
         );
       }
     } else {
+      setState(() {
+        _isLoading = false;
+      });
+
+      print('Failed to save goal to Firebase');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to save goal. Please try again.'),
@@ -279,7 +368,7 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
   }
 
   void _resetGoal() {
-    print('=== RESET GOAL DEBUG ===');
+    print('=== RESET GOAL ===');
     print('Before reset:');
     print('_isGoalSet: $_isGoalSet');
     print('_isGoalLocked: $_isGoalLocked');
@@ -288,7 +377,7 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
     setState(() {
       _isGoalSet = false;
       _isGoalLocked = false;
-      _isSettingNewGoal = true; // Hide success message while setting new goal
+      _isSettingNewGoal = true;
       _goalController.clear();
     });
 
@@ -299,7 +388,7 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('You can now set a new savings goal!'),
+        content: Text('Set a new savings goal!'),
         backgroundColor: const Color(0xFF47C272),
         duration: Duration(seconds: 2),
       ),
@@ -307,11 +396,10 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
   }
 
   Widget _buildSavingsGoals() {
-    final progress =
-        (widget.userWallet.savingBalance / widget.userWallet.savingGoal).clamp(
-          0.0,
-          1.0,
-        );
+    final progress = widget.userWallet.savingGoal > 0
+        ? (widget.userWallet.savingBalance / widget.userWallet.savingGoal)
+              .clamp(0.0, 1.0)
+        : 0.0;
 
     return Container(
       width: double.infinity,
@@ -342,68 +430,90 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                 ),
               ),
               Spacer(),
-              if (!_isGoalLocked && !_isSettingNewGoal)
+              if (_isGoalSet && !_isGoalLocked && !_isSettingNewGoal)
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                   decoration: BoxDecoration(
                     color: const Color(0xFF47C272),
                     borderRadius: BorderRadius.circular(12.r),
                   ),
-                  child: Text(
-                    'UNLOCKED',
-                    style: TextStyle(
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      fontFamily: 'SF Pro Text',
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.lock_open, size: 12.sp, color: Colors.white),
+                      SizedBox(width: 4.w),
+                      Text(
+                        'UNLOCKED',
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          fontFamily: 'SF Pro Text',
+                        ),
+                      ),
+                    ],
                   ),
                 )
-              else if (_isGoalLocked && !_isSettingNewGoal)
+              else if (_isGoalSet && _isGoalLocked && !_isSettingNewGoal)
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFF6A5D),
                     borderRadius: BorderRadius.circular(12.r),
                   ),
-                  child: Text(
-                    'LOCKED',
-                    style: TextStyle(
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      fontFamily: 'SF Pro Text',
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.lock, size: 12.sp, color: Colors.white),
+                      SizedBox(width: 4.w),
+                      Text(
+                        'LOCKED',
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          fontFamily: 'SF Pro Text',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
           ),
           SizedBox(height: 16.h),
 
-          // Goal Input Field
+          // Goal Input Field (without suffix icon)
           TextField(
             controller: _goalController,
-            enabled: !_isGoalLocked, // Disable if goal is locked
+            enabled: !_isGoalLocked,
             keyboardType: TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-              TextInputFormatter.withFunction((oldValue, newValue) {
-                // Prevent leading zeros and ensure positive numbers
-                if (newValue.text.isEmpty) return newValue;
-                final value = double.tryParse(newValue.text);
-                if (value == null || value <= 0) {
-                  return oldValue;
-                }
-                return newValue;
-              }),
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             ],
             decoration: InputDecoration(
-              labelText: _isGoalSet
-                  ? 'Savings Goal (SAR) - ${_isGoalLocked ? "LOCKED" : "UNLOCKED"}'
+              labelText: _isGoalLocked
+                  ? 'Savings Goal (SAR) - LOCKED'
                   : 'Set your savings goal (SAR)',
-              hintText: _isGoalSet ? 'Goal is set' : 'Enter amount',
+              hintText: _isGoalLocked ? 'Reach goal to unlock' : 'Enter amount',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.r),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.r),
+                borderSide: BorderSide(
+                  color: _isGoalLocked
+                      ? const Color(0xFFFF6A5D).withOpacity(0.3)
+                      : Colors.grey.shade300,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.r),
+                borderSide: BorderSide(
+                  color: _isGoalLocked
+                      ? const Color(0xFFFF6A5D)
+                      : const Color(0xFF643FDB),
+                  width: 2,
+                ),
               ),
               prefixIcon: Icon(
                 _isGoalLocked ? Icons.lock : Icons.flag,
@@ -411,102 +521,113 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                     ? const Color(0xFFFF6A5D)
                     : const Color(0xFF643FDB),
               ),
-              suffixIcon: () {
-                final shouldShow =
-                    (_isGoalSet && !_isGoalLocked) ||
-                    (_isSettingNewGoal && _isGoalSet);
-                print('=== SAVE BUTTON DEBUG ===');
-                print('_isGoalSet: $_isGoalSet');
-                print('_isGoalLocked: $_isGoalLocked');
-                print('_isSettingNewGoal: $_isSettingNewGoal');
-                print('shouldShow: $shouldShow');
-
-                return shouldShow
-                    ? IconButton(
-                        icon: Icon(Icons.check, color: const Color(0xFF47C272)),
-                        onPressed: _saveGoal,
-                        tooltip: 'Save Goal',
-                      )
-                    : null;
-              }(),
             ),
             onChanged: (value) {
-              print('=== TEXT CHANGED DEBUG ===');
-              print('Value: "$value"');
-              print('_isGoalLocked: $_isGoalLocked');
-              print('_isSettingNewGoal: $_isSettingNewGoal');
-              print('_isGoalSet before: $_isGoalSet');
-
-              // Only allow changes if goal is not locked
               if (!_isGoalLocked) {
                 setState(() {
-                  _isGoalSet = value.isNotEmpty;
+                  // Trigger rebuild to show/hide save button
                 });
-                print('Updated _isGoalSet to: $_isGoalSet');
-                print(
-                  'Save button should show: ${(_isGoalSet && !_isGoalLocked) || (_isSettingNewGoal && _isGoalSet)}',
-                );
-              } else {
-                print('Goal is locked, ignoring changes');
               }
             },
           ),
+
+          // Save Goal Button - Now visible and prominent
+          if (!_isGoalLocked && _goalController.text.isNotEmpty) ...[
+            SizedBox(height: 12.h),
+            SizedBox(
+              width: double.infinity,
+              height: 48.h,
+              child: ElevatedButton(
+                onPressed: _saveGoal,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF47C272),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  elevation: 2,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, size: 20.sp),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Save Goal',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'SF Pro Text',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
           SizedBox(height: 16.h),
 
           // Progress Bar
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Progress',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w500,
-                      color: const Color(0xFF1C1243),
-                      fontFamily: 'SF Pro Text',
+          if (_isGoalSet) ...[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Progress',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF1C1243),
+                        fontFamily: 'SF Pro Text',
+                      ),
                     ),
-                  ),
-                  Text(
-                    '${(progress * 100).toStringAsFixed(1)}%',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.bold,
-                      color: !_isGoalLocked && !_isSettingNewGoal
+                    Text(
+                      '${(progress * 100).toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.bold,
+                        color: !_isGoalLocked
+                            ? const Color(0xFF47C272)
+                            : const Color(0xFF643FDB),
+                        fontFamily: 'SF Pro Text',
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8.h),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4.r),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: const Color(0xFFE2E8F0),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      !_isGoalLocked
                           ? const Color(0xFF47C272)
                           : const Color(0xFF643FDB),
-                      fontFamily: 'SF Pro Text',
                     ),
+                    minHeight: 8.h,
                   ),
-                ],
-              ),
-              SizedBox(height: 8.h),
-              LinearProgressIndicator(
-                value: progress,
-                backgroundColor: const Color(0xFFE2E8F0),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  !_isGoalLocked && !_isSettingNewGoal
-                      ? const Color(0xFF47C272)
-                      : const Color(0xFF643FDB),
                 ),
-                minHeight: 8.h,
-              ),
-              SizedBox(height: 8.h),
-              Text(
-                '${widget.userWallet.savingBalance.toStringAsFixed(2)} SAR / ${widget.userWallet.savingGoal.toStringAsFixed(2)} SAR',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: const Color(0xFF718096),
-                  fontFamily: 'SF Pro Text',
+                SizedBox(height: 8.h),
+                Text(
+                  '${widget.userWallet.savingBalance.toStringAsFixed(2)} SAR / ${widget.userWallet.savingGoal.toStringAsFixed(2)} SAR',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: const Color(0xFF718096),
+                    fontFamily: 'SF Pro Text',
+                  ),
                 ),
-              ),
-            ],
-          ),
-
-          if (!_isGoalLocked && !_isSettingNewGoal) ...[
+              ],
+            ),
             SizedBox(height: 16.h),
+          ],
+
+          // Status Messages
+          if (_isGoalSet && !_isGoalLocked && !_isSettingNewGoal) ...[
             Container(
               width: double.infinity,
               padding: EdgeInsets.all(12.w),
@@ -518,14 +639,14 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
               child: Row(
                 children: [
                   Icon(
-                    Icons.check_circle,
+                    Icons.celebration,
                     color: const Color(0xFF47C272),
                     size: 20.sp,
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
                     child: Text(
-                      'Goal reached! You can now transfer money to spending.',
+                      'Congratulations! You reached your goal! You can now transfer money to spending.',
                       style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
@@ -542,16 +663,16 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                       foregroundColor: Colors.white,
                       padding: EdgeInsets.symmetric(
                         horizontal: 12.w,
-                        vertical: 6.h,
+                        vertical: 8.h,
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6.r),
                       ),
                     ),
                     child: Text(
-                      'Set New Goal',
+                      'New Goal',
                       style: TextStyle(
-                        fontSize: 10.sp,
+                        fontSize: 11.sp,
                         fontWeight: FontWeight.w600,
                         fontFamily: 'SF Pro Text',
                       ),
@@ -560,8 +681,7 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                 ],
               ),
             ),
-          ] else if (!_isSettingNewGoal) ...[
-            SizedBox(height: 16.h),
+          ] else if (_isGoalSet && _isGoalLocked && !_isSettingNewGoal) ...[
             Container(
               width: double.infinity,
               padding: EdgeInsets.all(12.w),
@@ -576,11 +696,42 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                   SizedBox(width: 8.w),
                   Expanded(
                     child: Text(
-                      'Saving wallet is locked! Reach your goal to unlock transfers.',
+                      'Saving wallet is locked! Reach your goal of ${widget.userWallet.savingGoal.toStringAsFixed(2)} SAR to unlock transfers.',
                       style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                         color: const Color(0xFFFF6A5D),
+                        fontFamily: 'SF Pro Text',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (!_isGoalSet || _isSettingNewGoal) ...[
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(12.w),
+              decoration: BoxDecoration(
+                color: const Color(0xFF643FDB).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: const Color(0xFF643FDB)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: const Color(0xFF643FDB),
+                    size: 20.sp,
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      'Set a savings goal to start tracking your progress! Your wallet will lock until you reach it.',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF643FDB),
                         fontFamily: 'SF Pro Text',
                       ),
                     ),
@@ -745,15 +896,6 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
                     fontFamily: 'SF Pro Text',
                   ),
                 ),
-                SizedBox(height: 2.h),
-                Text(
-                  _formatDate(transaction.date),
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: const Color(0xFFA29EB6),
-                    fontFamily: 'SF Pro Text',
-                  ),
-                ),
               ],
             ),
           ),
@@ -809,21 +951,6 @@ class _SavingWalletScreenState extends State<SavingWalletScreen> {
         return 'Interest';
       default:
         return 'Savings';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
     }
   }
 

@@ -237,8 +237,8 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
                         controller: _nameController,
                         hintText: 'Enter task name',
                         errorText: _nameError,
-                        maxLength: 40,
-                        inputFormatters: [LengthLimitingTextInputFormatter(40)],
+                        maxLength: 80,
+                        inputFormatters: [LengthLimitingTextInputFormatter(80)],
                       ),
                     ),
 
@@ -461,7 +461,11 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
     });
 
     final trimmedName = _nameController.text.trim();
-    if (trimmedName.isEmpty) _nameError = 'Please enter a task name';
+    if (trimmedName.isEmpty) {
+      _nameError = 'Please enter a task name';
+    } else if (trimmedName.length < 3) {
+      _nameError = 'Task name must be at least 3 characters';
+    }
     if (_selectedChildId == null) _childError = 'Please select a child';
     if (_toDate == null) _dateError = 'Please select an end date';
     if (_priority == null) _priorityError = 'Please choose a priority';
@@ -474,6 +478,9 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
       allowance = double.tryParse(allowanceText);
       if (allowance == null) {
         _allowanceError = 'Allowance must be a valid number';
+      }
+      if (allowance != null && allowance > 9999) {
+        _allowanceError = 'Allowance cannot exceed 9999 SAR';
       }
     }
 
@@ -959,6 +966,7 @@ class _RiyalSuffix extends StatelessWidget {
 }
 
 class PositiveNumberFormatter extends TextInputFormatter {
+  static const double maxValue = 9999;
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
@@ -966,7 +974,7 @@ class PositiveNumberFormatter extends TextInputFormatter {
   ) {
     if (newValue.text.isEmpty) return newValue;
     final value = double.tryParse(newValue.text);
-    if (value == null || value < 0) {
+    if (value == null || value < 0 || value >= maxValue) {
       return oldValue;
     }
     return newValue;

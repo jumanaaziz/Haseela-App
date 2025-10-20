@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/child_options.dart';
+import '../../models/wallet.dart';
+import '../../models/transaction.dart' as app_transaction;
+import '../services/firebase_service.dart';
 
 class ChildProfileViewScreen extends StatefulWidget {
   final ChildOption child;
@@ -21,12 +25,27 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   Map<String, dynamic>? _childDetails;
+  Wallet? _childWallet;
+  List<app_transaction.Transaction> _childTransactions = [];
+  bool _isLoadingWallet = true;
+  StreamSubscription<QuerySnapshot>? _walletSubscription;
+  StreamSubscription<QuerySnapshot>? _transactionSubscription;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
+
+    // Debug child information
+    print('=== CHILD OBJECT DEBUG ===');
+    print('Child ID: ${widget.child.id}');
+    print('Child First Name: ${widget.child.firstName}');
+    print('Child Username: ${widget.child.username}');
+    print('Child Email: ${widget.child.email}');
+    print('Child ID Type: ${widget.child.id.runtimeType}');
+    print('Child ID Length: ${widget.child.id.length}');
+    print('========================');
+
     // Set data immediately in initState
     _childDetails = {
       'firstName': widget.child.firstName,
@@ -34,20 +53,458 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
       'email': widget.child.email ?? 'N/A',
       'pin_display': '123456', // Default PIN for now
     };
-    
-    
+
+    // Test Firebase connection first
+    _testFirebaseConnection();
+
+    // Try to load wallet001 directly first
+    _loadWallet001Directly();
+
+    // Load wallet data
+    _loadChildWallet();
+
     // Also try to load from Firestore in the background
     _loadFromFirestoreInBackground();
   }
 
-
   @override
   void dispose() {
     _tabController.dispose();
+    _walletSubscription?.cancel();
+    _transactionSubscription?.cancel();
     super.dispose();
   }
 
-  
+  void _testFirebaseConnection() {
+    print('=== TESTING FIREBASE CONNECTION ===');
+    FirebaseFirestore.instance
+        .collection("Wallets")
+        .limit(1)
+        .get()
+        .then((QuerySnapshot snapshot) {
+          print('=== FIREBASE CONNECTION SUCCESS ===');
+          print(
+            'Found ${snapshot.docs.length} documents in Wallets collection',
+          );
+          if (snapshot.docs.isNotEmpty) {
+            print('Sample document: ${snapshot.docs.first.data()}');
+          }
+        })
+        .catchError((error) {
+          print('=== FIREBASE CONNECTION ERROR: $error ===');
+        });
+  }
+
+  void _loadWallet001Directly() {
+    print('=== FETCHING CHILD WALLET INFO ===');
+    print('Parent ID: ${widget.parentId}');
+    print('Child ID: ${widget.child.id}');
+
+    // Set a timeout to ensure loading state is cleared
+    Timer(const Duration(seconds: 5), () {
+      if (mounted && _isLoadingWallet) {
+        print('=== WALLET LOADING TIMEOUT - SHOWING DEFAULT VALUES ===');
+        setState(() {
+          _isLoadingWallet = false;
+        });
+      }
+    });
+
+    // Use the correct Firebase path: Parents/{parentId}/Children/{childId}/Wallet/wallet001
+    FirebaseFirestore.instance
+        .collection("Parents")
+        .doc(widget.parentId)
+        .collection("Children")
+        .doc(widget.child.id)
+        .collection("Wallet")
+        .doc("wallet001")
+        .get()
+        .then((DocumentSnapshot doc) {
+          print('=== DOCUMENT EXISTS: ${doc.exists} ===');
+          if (doc.exists) {
+            final data = doc.data() as Map<String, dynamic>?;
+            print('=== WALLET FOUND ===');
+            print('Document ID: ${doc.id}');
+            print('Document data: $data');
+            print('Total Balance: ${data?['totalBalance']}');
+            print('Spending: ${data?['spendingBalance']}');
+            print('Savings: ${data?['savingBalance']}');
+            print('Goal: ${data?['savingGoal']}');
+
+            try {
+              final wallet = Wallet.fromMap(data!);
+              print('=== WALLET PARSED SUCCESSFULLY ===');
+              print('Wallet totalBalance: ${wallet.totalBalance}');
+              print('Wallet spendingBalance: ${wallet.spendingBalance}');
+              print('Wallet savingBalance: ${wallet.savingBalance}');
+
+              if (mounted) {
+                setState(() {
+                  _childWallet = wallet;
+                  _isLoadingWallet = false;
+                });
+                print('=== WALLET LOADED SUCCESSFULLY ===');
+              }
+            } catch (e) {
+              print('=== ERROR PARSING WALLET: $e ===');
+              if (mounted) {
+                setState(() {
+                  _isLoadingWallet = false;
+                });
+              }
+            }
+          } else {
+            print('=== NO WALLET FOUND ===');
+            print(
+              'Path checked: Parents/${widget.parentId}/Children/${widget.child.id}/Wallet/wallet001',
+            );
+            if (mounted) {
+              setState(() {
+                _isLoadingWallet = false;
+              });
+            }
+          }
+        })
+        .catchError((error) {
+          print('=== FIREBASE ERROR: $error ===');
+          if (mounted) {
+            setState(() {
+              _isLoadingWallet = false;
+            });
+          }
+        });
+  }
+
+  void _tryAlternativeQueries() {
+    print('=== TRYING ALTERNATIVE QUERIES ===');
+
+    // Try different field names
+    final alternativeFields = ['childId', 'child_id', 'user_id', 'id'];
+
+    for (String field in alternativeFields) {
+      FirebaseFirestore.instance
+          .collection("Wallets")
+          .where(field, isEqualTo: widget.child.id)
+          .get()
+          .then((QuerySnapshot snapshot) {
+            if (snapshot.docs.isNotEmpty) {
+              print('=== FOUND WALLET WITH FIELD: $field ===');
+              print('Found ${snapshot.docs.length} documents');
+              final doc = snapshot.docs.first;
+              print('Document data: ${doc.data()}');
+
+              // Try to load this wallet
+              try {
+                final wallet = Wallet.fromFirestore(
+                  doc as DocumentSnapshot<Map<String, dynamic>>,
+                  null,
+                );
+                if (mounted) {
+                  setState(() {
+                    _childWallet = wallet;
+                    _isLoadingWallet = false;
+                  });
+                }
+                print('=== SUCCESSFULLY LOADED WALLET WITH FIELD: $field ===');
+              } catch (e) {
+                print('=== ERROR PARSING WALLET WITH FIELD $field: $e ===');
+              }
+            } else {
+              print('=== NO WALLET FOUND WITH FIELD: $field ===');
+            }
+          })
+          .catchError((error) {
+            print('=== ERROR QUERYING FIELD $field: $error ===');
+          });
+    }
+
+    // Also try to get wallet by document ID
+    FirebaseFirestore.instance
+        .collection("Wallets")
+        .doc(widget.child.id)
+        .get()
+        .then((DocumentSnapshot doc) {
+          if (doc.exists) {
+            print('=== FOUND WALLET BY DOCUMENT ID ===');
+            print('Document data: ${doc.data()}');
+
+            try {
+              final wallet = Wallet.fromFirestore(
+                doc as DocumentSnapshot<Map<String, dynamic>>,
+                null,
+              );
+              if (mounted) {
+                setState(() {
+                  _childWallet = wallet;
+                  _isLoadingWallet = false;
+                });
+              }
+              print('=== SUCCESSFULLY LOADED WALLET BY DOCUMENT ID ===');
+            } catch (e) {
+              print('=== ERROR PARSING WALLET BY DOCUMENT ID: $e ===');
+            }
+          } else {
+            print('=== NO WALLET FOUND BY DOCUMENT ID ===');
+          }
+        })
+        .catchError((error) {
+          print('=== ERROR QUERYING BY DOCUMENT ID: $error ===');
+        });
+
+    // Try to find wallet by email or other child info
+    _tryFindWalletByChildInfo();
+  }
+
+  Future<void> _createWallet() async {
+    try {
+      print('🔧 Creating wallet for child: ${widget.child.id}');
+
+      // Create a default wallet
+      final wallet = Wallet(
+        id: 'wallet001',
+        userId: widget.child.id,
+        totalBalance: 0.0,
+        spendingBalance: 0.0,
+        savingBalance: 0.0,
+        savingGoal: 100.0,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      // Try to create wallet using FirebaseService
+      final success = await FirebaseService.createChildWallet(
+        widget.parentId,
+        widget.child.id,
+        wallet,
+      );
+
+      if (success) {
+        print('✅ Wallet created successfully via FirebaseService.');
+        // Refresh the wallet data
+        _loadWallet001Directly();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Wallet created successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        print('❌ Failed to create wallet via FirebaseService.');
+        // Show error message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to create wallet. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Error creating wallet: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating wallet: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _tryFindWalletByChildInfo() {
+    print('=== TRYING TO FIND WALLET BY CHILD INFO ===');
+
+    // Try to find wallet by email
+    if (widget.child.email != null && widget.child.email!.isNotEmpty) {
+      print('=== SEARCHING BY EMAIL: ${widget.child.email} ===');
+
+      // First, let's get all wallets and check if any have matching email
+      FirebaseFirestore.instance
+          .collection("Wallets")
+          .get()
+          .then((QuerySnapshot allWallets) {
+            for (var doc in allWallets.docs) {
+              final data = doc.data() as Map<String, dynamic>?;
+              print('Checking wallet ${doc.id}:');
+              print('  - userId: ${data?['userId']}');
+              print('  - email: ${data?['email']}');
+              print('  - childEmail: ${data?['childEmail']}');
+              print('  - All fields: ${data?.keys.toList()}');
+
+              // Check if this wallet belongs to this child by email
+              if (data?['email'] == widget.child.email ||
+                  data?['childEmail'] == widget.child.email) {
+                print('=== FOUND WALLET BY EMAIL MATCH ===');
+                print('Wallet ID: ${doc.id}');
+                print('Wallet data: ${data}');
+
+                try {
+                  final wallet = Wallet.fromFirestore(
+                    doc as DocumentSnapshot<Map<String, dynamic>>,
+                    null,
+                  );
+                  if (mounted) {
+                    setState(() {
+                      _childWallet = wallet;
+                      _isLoadingWallet = false;
+                    });
+                  }
+                  print('=== SUCCESSFULLY LOADED WALLET BY EMAIL ===');
+                  return; // Exit early if found
+                } catch (e) {
+                  print('=== ERROR PARSING WALLET BY EMAIL: $e ===');
+                }
+              }
+            }
+            print('=== NO WALLET FOUND BY EMAIL ===');
+          })
+          .catchError((error) {
+            print('=== ERROR SEARCHING BY EMAIL: $error ===');
+          });
+    }
+  }
+
+  void _linkWalletToChild() {
+    print('=== LINKING WALLET TO CHILD ===');
+    print('Child ID: ${widget.child.id}');
+    print('Child Email: ${widget.child.email}');
+
+    // First, let's find the wallet by its document ID "wallet001"
+    FirebaseFirestore.instance
+        .collection("Wallets")
+        .doc("wallet001")
+        .get()
+        .then((DocumentSnapshot doc) {
+          if (doc.exists) {
+            final data = doc.data() as Map<String, dynamic>?;
+            print('=== FOUND WALLET001 ===');
+            print('Current userId: ${data?['userId']}');
+            print('Wallet data: ${data}');
+
+            // Update the wallet's userId to match the child's ID
+            doc.reference
+                .update({
+                  'userId': widget.child.id,
+                  'childId': widget.child.id,
+                  'email': widget.child.email,
+                  'updatedAt': DateTime.now().toIso8601String(),
+                })
+                .then((_) {
+                  print('=== WALLET SUCCESSFULLY LINKED TO CHILD ===');
+                  print('Updated userId to: ${widget.child.id}');
+
+                  // Reload the wallet data
+                  _loadChildWallet();
+                })
+                .catchError((error) {
+                  print('=== ERROR LINKING WALLET: $error ===');
+                });
+          } else {
+            print('=== WALLET001 NOT FOUND ===');
+
+            // Fallback: search by email
+            FirebaseFirestore.instance
+                .collection("Wallets")
+                .get()
+                .then((QuerySnapshot allWallets) {
+                  for (var doc in allWallets.docs) {
+                    final data = doc.data() as Map<String, dynamic>?;
+                    print('Checking wallet ${doc.id}:');
+                    print('  - userId: ${data?['userId']}');
+                    print('  - email: ${data?['email']}');
+                    print('  - All fields: ${data?.keys.toList()}');
+
+                    // Check if this wallet belongs to this child by email
+                    if (data?['email'] == widget.child.email ||
+                        data?['childEmail'] == widget.child.email) {
+                      print('=== FOUND WALLET TO LINK: ${doc.id} ===');
+                      print('Current userId: ${data?['userId']}');
+
+                      // Update the wallet's userId to match the child's ID
+                      doc.reference
+                          .update({
+                            'userId': widget.child.id,
+                            'childId': widget.child.id,
+                            'email': widget.child.email,
+                            'updatedAt': DateTime.now().toIso8601String(),
+                          })
+                          .then((_) {
+                            print(
+                              '=== WALLET SUCCESSFULLY LINKED TO CHILD ===',
+                            );
+                            print('Updated userId to: ${widget.child.id}');
+
+                            // Reload the wallet data
+                            _loadChildWallet();
+                          })
+                          .catchError((error) {
+                            print('=== ERROR LINKING WALLET: $error ===');
+                          });
+                      return;
+                    }
+                  }
+                  print('=== NO WALLET FOUND TO LINK ===');
+                })
+                .catchError((error) {
+                  print('=== ERROR SEARCHING FOR WALLET TO LINK: $error ===');
+                });
+          }
+        })
+        .catchError((error) {
+          print('=== ERROR GETTING WALLET001: $error ===');
+        });
+  }
+
+  void _loadChildWallet() {
+    print('=== FETCHING CHILD WALLET ===');
+
+    // Simply fetch wallet001 directly
+    _loadWallet001Directly();
+  }
+
+  void _loadChildTransactions() {
+    print('=== LOADING TRANSACTIONS FOR CHILD: ${widget.child.id} ===');
+
+    _transactionSubscription = FirebaseFirestore.instance
+        .collection("Transactions")
+        .where("userId", isEqualTo: widget.child.id)
+        .orderBy("date", descending: true)
+        .limit(10)
+        .snapshots()
+        .listen(
+          (QuerySnapshot snapshot) {
+            print(
+              '=== TRANSACTIONS QUERY RESULT: ${snapshot.docs.length} transactions found ===',
+            );
+
+            final transactions = snapshot.docs
+                .map(
+                  (doc) => app_transaction.Transaction.fromMap(
+                    doc.data() as Map<String, dynamic>,
+                  ),
+                )
+                .toList();
+
+            if (mounted) {
+              setState(() {
+                _childTransactions = transactions;
+              });
+            }
+
+            print(
+              '=== TRANSACTIONS LOADED: ${transactions.length} transactions ===',
+            );
+          },
+          onError: (error) {
+            print('=== ERROR LOADING TRANSACTIONS: $error ===');
+          },
+        );
+  }
+
   Future<void> _loadFromFirestoreInBackground() async {
     try {
       print('=== LOADING FROM FIRESTORE IN BACKGROUND ===');
@@ -62,8 +519,10 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
       if (doc.exists) {
         final data = doc.data();
         print('Firestore data found: $data');
-        
-        if (data != null && data['firstName'] != null && data['firstName'].toString().trim().isNotEmpty) {
+
+        if (data != null &&
+            data['firstName'] != null &&
+            data['firstName'].toString().trim().isNotEmpty) {
           if (mounted) {
             setState(() {
               _childDetails = {
@@ -102,8 +561,8 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildAccountInfoTab(isTablet, isDesktop, isSmallScreen),
                   _buildTrackWalletTab(isTablet, isDesktop, isSmallScreen),
+                  _buildAccountInfoTab(isTablet, isDesktop, isSmallScreen),
                 ],
               ),
             ),
@@ -113,15 +572,21 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     );
   }
 
-  Widget _buildHeader(
-    bool isTablet,
-    bool isDesktop,
-    bool isSmallScreen,
-  ) {
+  Widget _buildHeader(bool isTablet, bool isDesktop, bool isSmallScreen) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isDesktop ? 24.w : isTablet ? 20.w : 16.w,
-        vertical: isDesktop ? 20.h : isTablet ? 16.h : isSmallScreen ? 12.h : 16.h,
+        horizontal: isDesktop
+            ? 24.w
+            : isTablet
+            ? 20.w
+            : 16.w,
+        vertical: isDesktop
+            ? 20.h
+            : isTablet
+            ? 16.h
+            : isSmallScreen
+            ? 12.h
+            : 16.h,
       ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -143,37 +608,91 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
             onTap: () => Navigator.pop(context),
             child: Container(
               padding: EdgeInsets.all(
-                isDesktop ? 12.w : isTablet ? 10.w : isSmallScreen ? 8.w : 10.w,
+                isDesktop
+                    ? 12.w
+                    : isTablet
+                    ? 10.w
+                    : isSmallScreen
+                    ? 8.w
+                    : 10.w,
               ),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(
-                  isDesktop ? 12.r : isTablet ? 10.r : isSmallScreen ? 8.r : 10.r,
+                  isDesktop
+                      ? 12.r
+                      : isTablet
+                      ? 10.r
+                      : isSmallScreen
+                      ? 8.r
+                      : 10.r,
                 ),
               ),
               child: Icon(
                 Icons.arrow_back,
                 color: Colors.white,
-                size: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 18.sp : 20.sp,
+                size: isDesktop
+                    ? 24.sp
+                    : isTablet
+                    ? 22.sp
+                    : isSmallScreen
+                    ? 18.sp
+                    : 20.sp,
               ),
             ),
           ),
-          SizedBox(width: isDesktop ? 16.w : isTablet ? 14.w : isSmallScreen ? 12.w : 14.w),
+          SizedBox(
+            width: isDesktop
+                ? 16.w
+                : isTablet
+                ? 14.w
+                : isSmallScreen
+                ? 12.w
+                : 14.w,
+          ),
           CircleAvatar(
-            radius: isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r,
+            radius: isDesktop
+                ? 30.r
+                : isTablet
+                ? 28.r
+                : isSmallScreen
+                ? 20.r
+                : 25.r,
             backgroundColor: Colors.white.withOpacity(0.2),
             child: widget.child.avatar != null
                 ? ClipOval(
                     child: Image.network(
                       widget.child.avatar!,
-                      width: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
-                      height: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
+                      width:
+                          (isDesktop
+                              ? 30.r
+                              : isTablet
+                              ? 28.r
+                              : isSmallScreen
+                              ? 20.r
+                              : 25.r) *
+                          2,
+                      height:
+                          (isDesktop
+                              ? 30.r
+                              : isTablet
+                              ? 28.r
+                              : isSmallScreen
+                              ? 20.r
+                              : 25.r) *
+                          2,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stack) {
                         return Text(
                           widget.child.initial,
                           style: TextStyle(
-                            fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
+                            fontSize: isDesktop
+                                ? 24.sp
+                                : isTablet
+                                ? 22.sp
+                                : isSmallScreen
+                                ? 16.sp
+                                : 20.sp,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
@@ -184,13 +703,27 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                 : Text(
                     widget.child.initial,
                     style: TextStyle(
-                      fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
+                      fontSize: isDesktop
+                          ? 24.sp
+                          : isTablet
+                          ? 22.sp
+                          : isSmallScreen
+                          ? 16.sp
+                          : 20.sp,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
           ),
-          SizedBox(width: isDesktop ? 16.w : isTablet ? 14.w : isSmallScreen ? 12.w : 14.w),
+          SizedBox(
+            width: isDesktop
+                ? 16.w
+                : isTablet
+                ? 14.w
+                : isSmallScreen
+                ? 12.w
+                : 14.w,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,7 +732,13 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                   widget.child.firstName,
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 18.sp : 20.sp,
+                    fontSize: isDesktop
+                        ? 24.sp
+                        : isTablet
+                        ? 22.sp
+                        : isSmallScreen
+                        ? 18.sp
+                        : 20.sp,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -207,7 +746,13 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                   widget.child.lastName,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.8),
-                    fontSize: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
+                    fontSize: isDesktop
+                        ? 16.sp
+                        : isTablet
+                        ? 15.sp
+                        : isSmallScreen
+                        ? 12.sp
+                        : 14.sp,
                   ),
                 ),
               ],
@@ -218,11 +763,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     );
   }
 
-  Widget _buildTabBar(
-    bool isTablet,
-    bool isDesktop,
-    bool isSmallScreen,
-  ) {
+  Widget _buildTabBar(bool isTablet, bool isDesktop, bool isSmallScreen) {
     return Container(
       color: Colors.white,
       child: TabBar(
@@ -231,16 +772,28 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
         labelColor: const Color(0xFF8B5CF6),
         unselectedLabelColor: Colors.grey[600],
         labelStyle: TextStyle(
-          fontSize: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
+          fontSize: isDesktop
+              ? 16.sp
+              : isTablet
+              ? 15.sp
+              : isSmallScreen
+              ? 12.sp
+              : 14.sp,
           fontWeight: FontWeight.w600,
         ),
         unselectedLabelStyle: TextStyle(
-          fontSize: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
+          fontSize: isDesktop
+              ? 16.sp
+              : isTablet
+              ? 15.sp
+              : isSmallScreen
+              ? 12.sp
+              : 14.sp,
           fontWeight: FontWeight.normal,
         ),
         tabs: const [
-          Tab(text: 'Child Account Information'),
           Tab(text: 'Track Child Wallet'),
+          Tab(text: 'Child Account Information'),
         ],
       ),
     );
@@ -253,7 +806,11 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
   ) {
     return SingleChildScrollView(
       padding: EdgeInsets.all(
-        isDesktop ? 24.w : isTablet ? 20.w : 16.w,
+        isDesktop
+            ? 24.w
+            : isTablet
+            ? 20.w
+            : 16.w,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,12 +818,22 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
           Container(
             width: double.infinity,
             padding: EdgeInsets.all(
-              isDesktop ? 24.w : isTablet ? 20.w : 16.w,
+              isDesktop
+                  ? 24.w
+                  : isTablet
+                  ? 20.w
+                  : 16.w,
             ),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(
-                isDesktop ? 16.r : isTablet ? 14.r : isSmallScreen ? 10.r : 12.r,
+                isDesktop
+                    ? 16.r
+                    : isTablet
+                    ? 14.r
+                    : isSmallScreen
+                    ? 10.r
+                    : 12.r,
               ),
               boxShadow: [
                 BoxShadow(
@@ -282,17 +849,55 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                 Text(
                   'Account Information',
                   style: TextStyle(
-                    fontSize: isDesktop ? 20.sp : isTablet ? 18.sp : isSmallScreen ? 16.sp : 18.sp,
+                    fontSize: isDesktop
+                        ? 20.sp
+                        : isTablet
+                        ? 18.sp
+                        : isSmallScreen
+                        ? 16.sp
+                        : 18.sp,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
                 ),
-                SizedBox(height: isDesktop ? 20.h : isTablet ? 16.h : isSmallScreen ? 12.h : 16.h),
+                SizedBox(
+                  height: isDesktop
+                      ? 20.h
+                      : isTablet
+                      ? 16.h
+                      : isSmallScreen
+                      ? 12.h
+                      : 16.h,
+                ),
                 if (_childDetails != null) ...[
-                  _buildInfoRow('First Name', _childDetails!['firstName'] ?? '', isTablet, isDesktop, isSmallScreen),
-                  _buildInfoRow('Username', _childDetails!['username'] ?? '', isTablet, isDesktop, isSmallScreen),
-                  _buildInfoRow('Email', _childDetails!['email'] ?? '', isTablet, isDesktop, isSmallScreen),
-                  _buildInfoRow('PIN', _childDetails!['pin_display'] ?? 'N/A', isTablet, isDesktop, isSmallScreen),
+                  _buildInfoRow(
+                    'First Name',
+                    _childDetails!['firstName'] ?? '',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
+                  _buildInfoRow(
+                    'Username',
+                    _childDetails!['username'] ?? '',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
+                  _buildInfoRow(
+                    'Email',
+                    _childDetails!['email'] ?? '',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
+                  _buildInfoRow(
+                    'PIN',
+                    _childDetails!['pin_display'] ?? 'N/A',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
                 ] else ...[
                   Column(
                     children: [
@@ -301,7 +906,13 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                       Text(
                         'Loading child information...',
                         style: TextStyle(
-                          fontSize: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
+                          fontSize: isDesktop
+                              ? 16.sp
+                              : isTablet
+                              ? 15.sp
+                              : isSmallScreen
+                              ? 12.sp
+                              : 14.sp,
                           color: Colors.grey[600],
                         ),
                       ),
@@ -320,7 +931,13 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                         child: Text(
                           'Retry Now',
                           style: TextStyle(
-                            fontSize: isDesktop ? 14.sp : isTablet ? 13.sp : isSmallScreen ? 11.sp : 12.sp,
+                            fontSize: isDesktop
+                                ? 14.sp
+                                : isTablet
+                                ? 13.sp
+                                : isSmallScreen
+                                ? 11.sp
+                                : 12.sp,
                             color: const Color(0xFF8B5CF6),
                           ),
                         ),
@@ -341,36 +958,143 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     bool isDesktop,
     bool isSmallScreen,
   ) {
-    return Container(
+    if (_isLoadingWallet) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // Show wallet information - use Firebase data if available, otherwise show default values
+    final wallet =
+        _childWallet ??
+        Wallet(
+          id: widget.child.id,
+          userId: widget.child.id,
+          totalBalance: 0.0,
+          spendingBalance: 0.0,
+          savingBalance: 0.0,
+          savingGoal: 100.0,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+    final isDataFromFirebase = _childWallet != null;
+
+    return SingleChildScrollView(
       padding: EdgeInsets.all(
-        isDesktop ? 24.w : isTablet ? 20.w : 16.w,
+        isDesktop
+            ? 24.w
+            : isTablet
+            ? 20.w
+            : 16.w,
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.account_balance_wallet_outlined,
-            size: isDesktop ? 80.sp : isTablet ? 70.sp : isSmallScreen ? 50.sp : 60.sp,
-            color: Colors.grey[400],
-          ),
-          SizedBox(height: isDesktop ? 20.h : isTablet ? 16.h : isSmallScreen ? 12.h : 16.h),
-          Text(
-            'Track Child Wallet',
-            style: TextStyle(
-              fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 18.sp : 20.sp,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
+          // Data Source Indicator
+          if (!isDataFromFirebase) ...[
+            Container(
+              padding: EdgeInsets.all(12.w),
+              margin: EdgeInsets.only(bottom: 16.h),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.orange[600],
+                        size: 16.sp,
+                      ),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: Text(
+                          'No wallet data found in Firebase. Showing default values.',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+          ],
+
+          // Total Balance Card
+          _buildTotalBalanceCard(wallet, isTablet, isDesktop, isSmallScreen),
+          SizedBox(height: 20.h),
+
+          // Spending and Savings Cards
+          Row(
+            children: [
+              Expanded(
+                child: _buildWalletDetail(
+                  'Spending',
+                  wallet.spendingBalance,
+                  Icons.shopping_cart,
+                  const Color(0xFFEF4444),
+                  isTablet,
+                  isDesktop,
+                  isSmallScreen,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: _buildWalletDetail(
+                  'Savings',
+                  wallet.savingBalance,
+                  Icons.savings,
+                  const Color(0xFF3B82F6),
+                  isTablet,
+                  isDesktop,
+                  isSmallScreen,
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: isDesktop ? 12.h : isTablet ? 10.h : isSmallScreen ? 8.h : 10.h),
-          Text(
-            'This feature will be implemented by your teammate',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
-              color: Colors.grey[500],
+          SizedBox(height: 20.h),
+
+          // Saving Goal Progress
+          _buildSavingGoalProgress(wallet, isTablet, isDesktop, isSmallScreen),
+          SizedBox(height: 20.h),
+
+          // Wallet Statistics
+          _buildWalletStatistics(wallet, isTablet, isDesktop, isSmallScreen),
+          SizedBox(height: 20.h),
+
+          // Recent Transactions
+          if (_childTransactions.isNotEmpty) ...[
+            Text(
+              'Recent Transactions',
+              style: TextStyle(
+                fontSize: isDesktop
+                    ? 18.sp
+                    : isTablet
+                    ? 16.sp
+                    : isSmallScreen
+                    ? 14.sp
+                    : 15.sp,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
             ),
-          ),
+            SizedBox(height: 12.h),
+            ..._childTransactions
+                .take(5)
+                .map(
+                  (transaction) => _buildTransactionItem(
+                    transaction,
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
+                ),
+          ],
         ],
       ),
     );
@@ -384,17 +1108,37 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     bool isSmallScreen,
   ) {
     return Padding(
-      padding: EdgeInsets.only(bottom: isDesktop ? 16.h : isTablet ? 14.h : isSmallScreen ? 10.h : 12.h),
+      padding: EdgeInsets.only(
+        bottom: isDesktop
+            ? 16.h
+            : isTablet
+            ? 14.h
+            : isSmallScreen
+            ? 10.h
+            : 12.h,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: isDesktop ? 120.w : isTablet ? 100.w : isSmallScreen ? 80.w : 90.w,
+            width: isDesktop
+                ? 120.w
+                : isTablet
+                ? 100.w
+                : isSmallScreen
+                ? 80.w
+                : 90.w,
             child: Text(
               label,
               style: TextStyle(
                 color: Colors.grey[600],
-                fontSize: isDesktop ? 14.sp : isTablet ? 13.sp : isSmallScreen ? 11.sp : 12.sp,
+                fontSize: isDesktop
+                    ? 14.sp
+                    : isTablet
+                    ? 13.sp
+                    : isSmallScreen
+                    ? 11.sp
+                    : 12.sp,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -404,7 +1148,13 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
               value,
               style: TextStyle(
                 color: Colors.black87,
-                fontSize: isDesktop ? 14.sp : isTablet ? 13.sp : isSmallScreen ? 11.sp : 12.sp,
+                fontSize: isDesktop
+                    ? 14.sp
+                    : isTablet
+                    ? 13.sp
+                    : isSmallScreen
+                    ? 11.sp
+                    : 12.sp,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -414,18 +1164,679 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     );
   }
 
-  String _formatDate(dynamic timestamp) {
-    if (timestamp == null) return 'N/A';
-    
-    try {
-      if (timestamp is Timestamp) {
-        final date = timestamp.toDate();
-        return '${date.day}/${date.month}/${date.year}';
-      }
-      return 'N/A';
-    } catch (e) {
-      return 'N/A';
-    }
+  Widget _buildTotalBalanceCard(
+    Wallet wallet,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 20.w
+            : isTablet
+            ? 16.w
+            : 12.w,
+      ),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF10B981), Color(0xFF059669)],
+        ),
+        borderRadius: BorderRadius.circular(isDesktop ? 16.r : 12.r),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withOpacity(0.3),
+            blurRadius: 8.r,
+            spreadRadius: 1.r,
+            offset: Offset(0, 4.h),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.account_balance_wallet,
+                color: Colors.white,
+                size: isDesktop
+                    ? 28.sp
+                    : isTablet
+                    ? 24.sp
+                    : isSmallScreen
+                    ? 20.sp
+                    : 22.sp,
+              ),
+              SizedBox(width: 12.w),
+              Text(
+                'Total Balance',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isDesktop
+                      ? 18.sp
+                      : isTablet
+                      ? 16.sp
+                      : isSmallScreen
+                      ? 14.sp
+                      : 15.sp,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            '${wallet.totalBalance.toStringAsFixed(0)} SAR',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isDesktop
+                  ? 32.sp
+                  : isTablet
+                  ? 28.sp
+                  : isSmallScreen
+                  ? 24.sp
+                  : 26.sp,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildBalanceBreakdown(
+                'Spending',
+                wallet.spendingBalance,
+                const Color(0xFFEF4444),
+                isTablet,
+                isDesktop,
+                isSmallScreen,
+              ),
+              _buildBalanceBreakdown(
+                'Savings',
+                wallet.savingBalance,
+                const Color(0xFF3B82F6),
+                isTablet,
+                isDesktop,
+                isSmallScreen,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBalanceBreakdown(
+    String label,
+    double amount,
+    Color color,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: isDesktop
+                ? 12.sp
+                : isTablet
+                ? 11.sp
+                : isSmallScreen
+                ? 9.sp
+                : 10.sp,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        SizedBox(height: 4.h),
+        Text(
+          '${amount.toStringAsFixed(0)} SAR',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: isDesktop
+                ? 14.sp
+                : isTablet
+                ? 13.sp
+                : isSmallScreen
+                ? 11.sp
+                : 12.sp,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWalletDetail(
+    String title,
+    double amount,
+    IconData icon,
+    Color color,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 12.w
+            : isTablet
+            ? 10.w
+            : 8.w,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(isDesktop ? 8.r : 6.r),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            color: color,
+            size: isDesktop
+                ? 20.sp
+                : isTablet
+                ? 18.sp
+                : isSmallScreen
+                ? 14.sp
+                : 16.sp,
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 12.sp
+                  : isTablet
+                  ? 11.sp
+                  : isSmallScreen
+                  ? 9.sp
+                  : 10.sp,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            '${amount.toStringAsFixed(0)} SAR',
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 14.sp
+                  : isTablet
+                  ? 13.sp
+                  : isSmallScreen
+                  ? 11.sp
+                  : 12.sp,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSavingGoalProgress(
+    Wallet wallet,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    final progress = wallet.savingGoal > 0
+        ? wallet.savingBalance / wallet.savingGoal
+        : 0.0;
+
+    return Container(
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 12.w
+            : isTablet
+            ? 10.w
+            : 8.w,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3B82F6).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(isDesktop ? 8.r : 6.r),
+        border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Saving Goal',
+                style: TextStyle(
+                  fontSize: isDesktop
+                      ? 12.sp
+                      : isTablet
+                      ? 11.sp
+                      : isSmallScreen
+                      ? 9.sp
+                      : 10.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              Text(
+                '${(progress * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontSize: isDesktop
+                      ? 12.sp
+                      : isTablet
+                      ? 11.sp
+                      : isSmallScreen
+                      ? 9.sp
+                      : 10.sp,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF3B82F6),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            backgroundColor: const Color(0xFF3B82F6).withOpacity(0.2),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+            borderRadius: BorderRadius.circular(4.r),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            '${wallet.savingBalance.toStringAsFixed(0)} / ${wallet.savingGoal.toStringAsFixed(0)} SAR',
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 11.sp
+                  : isTablet
+                  ? 10.sp
+                  : isSmallScreen
+                  ? 8.sp
+                  : 9.sp,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletStatistics(
+    Wallet wallet,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 20.w
+            : isTablet
+            ? 16.w
+            : 12.w,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(isDesktop ? 16.r : 12.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10.r,
+            spreadRadius: 1.r,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Wallet Statistics',
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 18.sp
+                  : isTablet
+                  ? 16.sp
+                  : isSmallScreen
+                  ? 14.sp
+                  : 15.sp,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 16.h),
+
+          // Wallet Details Grid
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  'Total Balance',
+                  '${wallet.totalBalance.toStringAsFixed(0)} SAR',
+                  Icons.account_balance_wallet,
+                  const Color(0xFF10B981),
+                  isTablet,
+                  isDesktop,
+                  isSmallScreen,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: _buildStatCard(
+                  'Spending Money',
+                  '${wallet.spendingBalance.toStringAsFixed(0)} SAR',
+                  Icons.shopping_cart,
+                  const Color(0xFFEF4444),
+                  isTablet,
+                  isDesktop,
+                  isSmallScreen,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  'Savings',
+                  '${wallet.savingBalance.toStringAsFixed(0)} SAR',
+                  Icons.savings,
+                  const Color(0xFF3B82F6),
+                  isTablet,
+                  isDesktop,
+                  isSmallScreen,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: _buildStatCard(
+                  'Saving Goal',
+                  '${wallet.savingGoal.toStringAsFixed(0)} SAR',
+                  Icons.flag,
+                  const Color(0xFF8B5CF6),
+                  isTablet,
+                  isDesktop,
+                  isSmallScreen,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16.h),
+
+          // Progress Information
+          Container(
+            padding: EdgeInsets.all(
+              isDesktop
+                  ? 16.w
+                  : isTablet
+                  ? 14.w
+                  : 12.w,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withOpacity(0.05),
+              borderRadius: BorderRadius.circular(isDesktop ? 12.r : 8.r),
+              border: Border.all(
+                color: const Color(0xFF3B82F6).withOpacity(0.2),
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Goal Progress',
+                      style: TextStyle(
+                        fontSize: isDesktop
+                            ? 14.sp
+                            : isTablet
+                            ? 13.sp
+                            : isSmallScreen
+                            ? 11.sp
+                            : 12.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      '${wallet.savingGoal > 0 ? ((wallet.savingBalance / wallet.savingGoal) * 100).toStringAsFixed(0) : '0'}%',
+                      style: TextStyle(
+                        fontSize: isDesktop
+                            ? 14.sp
+                            : isTablet
+                            ? 13.sp
+                            : isSmallScreen
+                            ? 11.sp
+                            : 12.sp,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF3B82F6),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8.h),
+                LinearProgressIndicator(
+                  value: wallet.savingGoal > 0
+                      ? (wallet.savingBalance / wallet.savingGoal).clamp(
+                          0.0,
+                          1.0,
+                        )
+                      : 0.0,
+                  backgroundColor: const Color(0xFF3B82F6).withOpacity(0.2),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFF3B82F6),
+                  ),
+                  borderRadius: BorderRadius.circular(4.r),
+                ),
+                SizedBox(height: 8.h),
+                Text(
+                  '${wallet.savingBalance.toStringAsFixed(0)} SAR saved out of ${wallet.savingGoal.toStringAsFixed(0)} SAR goal',
+                  style: TextStyle(
+                    fontSize: isDesktop
+                        ? 12.sp
+                        : isTablet
+                        ? 11.sp
+                        : isSmallScreen
+                        ? 9.sp
+                        : 10.sp,
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 16.w
+            : isTablet
+            ? 14.w
+            : 12.w,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(isDesktop ? 12.r : 8.r),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            color: color,
+            size: isDesktop
+                ? 24.sp
+                : isTablet
+                ? 22.sp
+                : isSmallScreen
+                ? 18.sp
+                : 20.sp,
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 12.sp
+                  : isTablet
+                  ? 11.sp
+                  : isSmallScreen
+                  ? 9.sp
+                  : 10.sp,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 14.sp
+                  : isTablet
+                  ? 13.sp
+                  : isSmallScreen
+                  ? 11.sp
+                  : 12.sp,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionItem(
+    app_transaction.Transaction transaction,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    final isIncome =
+        transaction.type == 'transfer' && transaction.toWallet == 'total';
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 8.h),
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 12.w
+            : isTablet
+            ? 10.w
+            : 8.w,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(isDesktop ? 8.r : 6.r),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(
+              isDesktop
+                  ? 8.w
+                  : isTablet
+                  ? 6.w
+                  : 4.w,
+            ),
+            decoration: BoxDecoration(
+              color:
+                  (isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444))
+                      .withOpacity(0.1),
+              borderRadius: BorderRadius.circular(isDesktop ? 6.r : 4.r),
+            ),
+            child: Icon(
+              isIncome ? Icons.arrow_upward : Icons.arrow_downward,
+              color: isIncome
+                  ? const Color(0xFF10B981)
+                  : const Color(0xFFEF4444),
+              size: isDesktop
+                  ? 16.sp
+                  : isTablet
+                  ? 14.sp
+                  : isSmallScreen
+                  ? 12.sp
+                  : 13.sp,
+            ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  transaction.description,
+                  style: TextStyle(
+                    fontSize: isDesktop
+                        ? 13.sp
+                        : isTablet
+                        ? 12.sp
+                        : isSmallScreen
+                        ? 10.sp
+                        : 11.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  transaction.category,
+                  style: TextStyle(
+                    fontSize: isDesktop
+                        ? 11.sp
+                        : isTablet
+                        ? 10.sp
+                        : isSmallScreen
+                        ? 8.sp
+                        : 9.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${isIncome ? '+' : '-'}${transaction.amount.toStringAsFixed(0)} SAR',
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 13.sp
+                  : isTablet
+                  ? 12.sp
+                  : isSmallScreen
+                  ? 10.sp
+                  : 11.sp,
+              fontWeight: FontWeight.bold,
+              color: isIncome
+                  ? const Color(0xFF10B981)
+                  : const Color(0xFFEF4444),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
-

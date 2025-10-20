@@ -12,18 +12,20 @@ import 'spending_wallet_screen.dart';
 import 'saving_wallet_screen.dart';
 import 'transfer_screen.dart';
 import '../../widgets/custom_bottom_nav.dart';
+import '../../widgets/custom_bottom_nav.dart';
 import 'package:haseela_app/screens/child/child_task_view_screen.dart';
 import 'package:haseela_app/screens/child/wishlist_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:haseela_app/screens/auth_wrapper.dart';
 import 'package:http/http.dart' as http;
+import 'haseela_lessons_overview_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String parentId;
   final String childId;
 
   const HomeScreen({Key? key, required this.parentId, required this.childId})
-      : super(key: key);
+    : super(key: key);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -32,6 +34,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool isProfileExpanded = false;
   bool isLoading = true;
+  bool hasRetried = false;
+  bool hasError = false;
+  String? errorMessage;
   File? avatarImage;
   String? avatarUrl;
   Map<String, dynamic>? _childData;
@@ -55,66 +60,74 @@ class _HomeScreenState extends State<HomeScreen> {
 
     print('🔹 INIT STATE — parentId=$parentId, childId=$childId');
 
-    setState(() {
-      isLoading = true;
-    });
-
-    Future.wait([_fetchChildProfile(), _loadUserData()])
-        .then((_) {
-          print('✅ Future.wait completed');
-          if (mounted) {
-            setState(() {
-              isLoading = false;
-            });
-          }
-        })
-        .catchError((e) {
-          print('❌ Future.wait error: $e');
-          if (mounted) {
-            setState(() {
-              isLoading = false;
-            });
-          }
-        });
+    _loadData();
   }
 
-  void _onNavTap(BuildContext context, int index) {
-    if (index == _navBarIndex) return;
-
+  Future<void> _loadData() async {
     setState(() {
-      _navBarIndex = index;
+      isLoading = true;
+      hasError = false;
+      errorMessage = null;
     });
 
-    switch (index) {
-      case 0:
-        break;
-      case 1:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChildTaskViewScreen(
-              parentId: widget.parentId,
-              childId: widget.childId,
-            ),
+    try {
+      await Future.wait([_fetchChildProfile(), _loadUserData()]);
+      print('✅ Data loading completed successfully');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          hasError = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Data loading error: $e');
+      if (mounted) {
+        if (!hasRetried) {
+          // First failure - retry automatically
+          print('🔄 First failure, retrying automatically...');
+          setState(() {
+            hasRetried = true;
+            isLoading = true;
+          });
+          // Wait a bit before retry
+          await Future.delayed(const Duration(seconds: 1));
+          await _loadData();
+        } else {
+          // Second failure - show error
+          print('❌ Retry failed, showing error');
+          setState(() {
+            isLoading = false;
+            hasError = true;
+            errorMessage = e.toString();
+          });
+          _showErrorSnackBar();
+        }
+      }
+    }
+  }
+
+  void _showErrorSnackBar() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to load data. Please check your connection and try again.',
+            style: TextStyle(fontSize: 14.sp),
           ),
-        );
-        break;
-      case 2:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => WishlistScreen(
-              parentId: widget.parentId,
-              childId: widget.childId,
-            ),
+          backgroundColor: Colors.red.shade600,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () {
+              setState(() {
+                hasRetried = false;
+              });
+              _loadData();
+            },
           ),
-        );
-        break;
-      case 3:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Leaderboard coming soon')),
-        );
-        break;
+        ),
+      );
     }
   }
 
@@ -166,6 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('❌ Error loading user data: $e');
+      rethrow; // Re-throw to trigger retry logic
     }
   }
 
@@ -183,14 +197,55 @@ class _HomeScreenState extends State<HomeScreen> {
           _childData = doc.data();
         });
         print('✅ Child profile loaded: $_childData');
-        isLoading = false;
       } else {
         print(
           '⚠️ Child document not found for $childId under parent $parentId',
         );
+        throw Exception('Child profile not found');
       }
     } catch (e) {
       print('❌ Error fetching child profile: $e');
+      rethrow; // Re-throw to trigger retry logic
+    }
+  }
+
+  void _onNavTap(BuildContext context, int index) {
+    if (index == _navBarIndex) return;
+
+    setState(() {
+      _navBarIndex = index;
+    });
+
+    switch (index) {
+      case 0:
+        break;
+      case 1:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChildTaskViewScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
+        );
+        break;
+      case 2:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WishlistScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
+        );
+        break;
+      case 3:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Leaderboard coming soon')),
+        );
+        break;
     }
   }
 
@@ -203,60 +258,47 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  const Color(0xFF643FDB),
+              // Enhanced loading indicator with shimmer effect
+              Container(
+                width: 60.w,
+                height: 60.w,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF643FDB).withOpacity(0.3),
+                      const Color(0xFF643FDB),
+                      const Color(0xFF643FDB).withOpacity(0.3),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                ),
+                child: const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  strokeWidth: 3,
                 ),
               ),
-              SizedBox(height: 16.h),
+              SizedBox(height: 24.h),
               Text(
-                'Loading...',
+                hasRetried ? 'Retrying...' : 'Loading your profile...',
                 style: TextStyle(
                   fontSize: 16.sp,
                   color: const Color(0xFF643FDB),
                   fontFamily: 'SF Pro Text',
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (userWallet == null) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFEFF1F3),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64.sp,
-                color: const Color(0xFFA29EB6),
-              ),
-              SizedBox(height: 16.h),
-              Text(
-                'Failed to load data',
-                style: TextStyle(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1C1243),
-                  fontFamily: 'SF Pro Text',
+              if (hasRetried) ...[
+                SizedBox(height: 8.h),
+                Text(
+                  'Please wait a moment',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: const Color(0xFF643FDB).withOpacity(0.7),
+                    fontFamily: 'SF Pro Text',
+                  ),
                 ),
-              ),
-              SizedBox(height: 8.h),
-              ElevatedButton(
-                onPressed: _loadUserData,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF643FDB),
-                  foregroundColor: Colors.white,
-                ),
-                child: Text(
-                  'Retry',
-                  style: TextStyle(fontFamily: 'SF Pro Text', fontSize: 16.sp),
-                ),
-              ),
+              ],
             ],
           ),
         ),
@@ -276,6 +318,18 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildWalletCards(),
               SizedBox(height: 16.h),
               _buildAddMoneyCard(),
+              SizedBox(height: 24.h),
+              Text(
+                "Your Lessons",
+                style: TextStyle(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF2D3748),
+                  fontFamily: 'SF Pro Text',
+                ),
+              ),
+              SizedBox(height: 16.h),
+              _buildTodaysLessonCard(),
             ],
           ),
         ),
@@ -285,6 +339,163 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: (index) {
           _onNavTap(context, index);
         },
+      ),
+    );
+  }
+
+  void _showToast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: TextStyle(
+            fontSize: 14.sp,
+            color: Colors.white,
+            fontFamily: 'SF Pro Text',
+          ),
+        ),
+        backgroundColor: const Color(0xFF643FDB),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Widget _buildTodaysLessonCard() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(20.w),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+        ),
+        borderRadius: BorderRadius.circular(20.r),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF3B82F6).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Icon(
+                  Icons.school_rounded,
+                  color: Colors.white,
+                  size: 24.sp,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Today's Lesson",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    Text(
+                      "Learning Challenge",
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16.h),
+          Text(
+            "Start your journey with Haseel the Owl 🦉 and learn about money!",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+            ),
+          ),
+          SizedBox(height: 20.h),
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12.r),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12.r),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HaseelaLessonsOverviewScreen(
+                        childName: _childData?['firstName'] ?? 'Child',
+                        childId: widget.childId,
+                        parentId: widget.parentId, // Pass parentId
+                      ),
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20.w,
+                    vertical: 14.h,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.play_arrow_rounded,
+                        color: const Color(0xFF1D4ED8),
+                        size: 20.sp,
+                      ),
+                      SizedBox(width: 8.w),
+                      Text(
+                        'Start Learning',
+                        style: TextStyle(
+                          color: const Color(0xFF8B5CF6),
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -305,10 +516,7 @@ class _HomeScreenState extends State<HomeScreen> {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF47C272),
-              Color(0xFFB37BE7),
-            ],
+            colors: [Color(0xFF47C272), Color(0xFFB37BE7)],
           ),
           borderRadius: BorderRadius.circular(20.r),
           boxShadow: [
@@ -468,6 +676,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               SizedBox(height: 20.h),
+              SizedBox(height: 20.h),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -551,20 +760,20 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: _buildWalletCard(
                 "Spending",
-                userWallet!.spendingBalance,
+                userWallet?.spendingBalance ?? 0.0,
                 const Color(0xFF47C272),
                 Icons.shopping_cart,
-                () => _navigateToSpendingWallet(),
+                userWallet != null ? () => _navigateToSpendingWallet() : null,
               ),
             ),
             SizedBox(width: 12.w),
             Expanded(
               child: _buildWalletCard(
                 "Saving",
-                userWallet!.savingBalance,
+                userWallet?.savingBalance ?? 0.0,
                 const Color(0xFF643FDB),
                 Icons.savings,
-                () => _navigateToSavingWallet(),
+                userWallet != null ? () => _navigateToSavingWallet() : null,
               ),
             ),
           ],
@@ -693,7 +902,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Text(
-                      "${userWallet!.totalBalance.toStringAsFixed(2)} SAR",
+                      "${(userWallet?.totalBalance ?? 0.0).toStringAsFixed(2)} SAR",
                       style: TextStyle(
                         fontSize: 28.sp,
                         fontWeight: FontWeight.bold,
@@ -710,7 +919,9 @@ class _HomeScreenState extends State<HomeScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => _navigateToTransfer(),
+              onPressed: userWallet != null
+                  ? () => _navigateToTransfer()
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: const Color(0xFF643FDB),
@@ -740,7 +951,7 @@ class _HomeScreenState extends State<HomeScreen> {
     double amount,
     Color color,
     IconData icon,
-    VoidCallback onTap,
+    VoidCallback? onTap,
   ) {
     return GestureDetector(
       onTap: onTap,
@@ -898,7 +1109,7 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, index) {
               final avatarUrl = avatarOptions[index];
               final isSelected = this.avatarUrl == avatarUrl;
-              
+
               return GestureDetector(
                 onTap: () async {
                   Navigator.pop(context);
@@ -908,8 +1119,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: isSelected 
-                          ? const Color(0xFF643FDB) 
+                      color: isSelected
+                          ? const Color(0xFF643FDB)
                           : Colors.grey.shade300,
                       width: isSelected ? 3.w : 2.w,
                     ),
@@ -943,7 +1154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: CircularProgressIndicator(
                             value: loadingProgress.expectedTotalBytes != null
                                 ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
+                                      loadingProgress.expectedTotalBytes!
                                 : null,
                             strokeWidth: 2,
                             valueColor: AlwaysStoppedAnimation<Color>(
@@ -1051,7 +1262,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      
+
       print('Error selecting avatar: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1067,7 +1278,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (className.isEmpty) return null;
 
     String cleaned = className.toLowerCase().trim();
-    
+
     print('   🔍 Parsing class name: "$className"');
 
     // convert text to numbers
@@ -1118,7 +1329,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (match != null) {
       final String numStr = match.group(1)!;
       final double? amount = double.tryParse(numStr);
-      
+
       if (amount != null && _isValidSaudiDenomination(amount)) {
         print('   ✅ Extracted from number: $amount SAR');
         return amount;
@@ -1147,7 +1358,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final Uri uri = Uri.parse(
         'https://detect.roboflow.com/$_roboflowModelId'
         '?api_key=$_roboflowApiKey'
-        '&confidence=50'  
+        '&confidence=50'
         '&overlap=30',
       );
 
@@ -1155,9 +1366,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final response = await http.post(
         uri,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: base64Image,
       );
 
@@ -1187,7 +1396,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final double confidence = (prediction['confidence'] ?? 0).toDouble();
         final double? amount = _extractAmountFromClassName(className);
 
-        print('   • Class: "$className" | Amount: ${amount ?? "N/A"} SAR | Confidence: ${(confidence * 100).toStringAsFixed(1)}%');
+        print(
+          '   • Class: "$className" | Amount: ${amount ?? "N/A"} SAR | Confidence: ${(confidence * 100).toStringAsFixed(1)}%',
+        );
 
         if (amount != null && amount > 0 && confidence >= 0.5) {
           validDetections.add({
@@ -1204,8 +1415,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       // Sort by confidence (highest first)
-      validDetections.sort((a, b) => 
-        (b['confidence'] as double).compareTo(a['confidence'] as double)
+      validDetections.sort(
+        (a, b) =>
+            (b['confidence'] as double).compareTo(a['confidence'] as double),
       );
 
       // Get the most confident detection
@@ -1214,18 +1426,24 @@ class _HomeScreenState extends State<HomeScreen> {
       final double bestConfidence = bestDetection['confidence'];
       final String bestClass = bestDetection['className'];
 
-      print('\n SELECTED: $bestAmount SAR from "$bestClass" (${(bestConfidence * 100).toStringAsFixed(1)}% confidence)');
+      print(
+        '\n SELECTED: $bestAmount SAR from "$bestClass" (${(bestConfidence * 100).toStringAsFixed(1)}% confidence)',
+      );
 
       // If multiple detections have similar confidence, show warning
       if (validDetections.length > 1) {
         final secondBest = validDetections[1];
         final double secondAmount = secondBest['amount'];
         final double secondConfidence = secondBest['confidence'];
-        
-        if ((bestConfidence - secondConfidence) < 0.15) {  
+
+        if ((bestConfidence - secondConfidence) < 0.15) {
           print('WARNING: Multiple similar detections found:');
-          print('   1st: $bestAmount SAR (${(bestConfidence * 100).toStringAsFixed(1)}%)');
-          print('   2nd: $secondAmount SAR (${(secondConfidence * 100).toStringAsFixed(1)}%)');
+          print(
+            '   1st: $bestAmount SAR (${(bestConfidence * 100).toStringAsFixed(1)}%)',
+          );
+          print(
+            '   2nd: $secondAmount SAR (${(secondConfidence * 100).toStringAsFixed(1)}%)',
+          );
         }
       }
 
@@ -1290,10 +1508,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _showInfoDialog(
           'Unable to detect currency',
           'Please make sure:\n'
-          '• The banknote is clearly visible\n'
-          '• The lighting is good\n'
-          '• The entire note is in frame\n'
-          '• The image is not blurry',
+              '• The banknote is clearly visible\n'
+              '• The lighting is good\n'
+              '• The entire note is in frame\n'
+              '• The image is not blurry',
         );
         return;
       }
@@ -1315,11 +1533,7 @@ class _HomeScreenState extends State<HomeScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.check_circle,
-                color: Color(0xFF47C272),
-                size: 48.sp,
-              ),
+              Icon(Icons.check_circle, color: Color(0xFF47C272), size: 48.sp),
               SizedBox(height: 16.h),
               Text(
                 '${amount.toStringAsFixed(0)} SAR',
@@ -1442,12 +1656,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
-    );
-  }
-
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -1481,8 +1689,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 1.4,
             ),
           ),
-          actionsPadding:
-              EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+          actionsPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -1491,6 +1698,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ElevatedButton.icon(
               onPressed: () async {
+                Navigator.of(context).pop();
                 Navigator.of(context).pop();
                 try {
                   await FirebaseAuth.instance.signOut();

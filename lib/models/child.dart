@@ -8,6 +8,7 @@ class Child {
   final String avatar;
   final String qr;
   final DocumentReference parent;
+  final int level; // ✅ NEW FIELD
 
   Child({
     required this.id,
@@ -17,6 +18,7 @@ class Child {
     required this.avatar,
     required this.qr,
     required this.parent,
+    required this.level, // ✅ include in constructor
   });
 
   factory Child.fromFirestore(DocumentSnapshot doc) {
@@ -56,6 +58,7 @@ class Child {
       avatar: data['avatar'] ?? '',
       qr: data['QR'] ?? '',
       parent: parentRef,
+      level: data['level'] ?? 1, // ✅ Default to level 1 if missing
     );
   }
 

@@ -14,7 +14,9 @@ import 'package:haseela_app/screens/child/child_task_view_screen.dart';
 import 'package:haseela_app/screens/child/wishlist_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:haseela_app/screens/auth_wrapper.dart';
+import 'package:http/http.dart' as http; // ✅ Add this line
 import 'auto_currency_scanner_screen.dart'; // Import the new scanner
+import 'dart:convert';
 import 'haseela_lessons_overview_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -43,6 +45,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late final String parentId;
   late final String childId;
+
+  static const String _roboflowModelId = "saudi-currency-detection/1";
+  static const String _roboflowApiKey = "YOUR_API_KEY_HERE";
 
   @override
   void initState() {
@@ -468,14 +473,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Icon(
                         Icons.play_arrow_rounded,
-                        color: const Color(0xFF1D4ED8),
+                        color: const Color(0xFF3B82F6),
                         size: 20.sp,
                       ),
                       SizedBox(width: 8.w),
                       Text(
                         'Start Learning',
                         style: TextStyle(
-                          color: const Color(0xFF8B5CF6),
+                          color: const Color(0xFF3B82F6),
                           fontSize: 16.sp,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.3,

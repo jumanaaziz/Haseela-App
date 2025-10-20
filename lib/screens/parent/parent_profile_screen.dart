@@ -21,7 +21,8 @@ class ParentProfileScreen extends StatefulWidget {
   State<ParentProfileScreen> createState() => _ParentProfileScreenState();
 }
 
-class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsBindingObserver {
+class _ParentProfileScreenState extends State<ParentProfileScreen>
+    with WidgetsBindingObserver {
   ParentProfile? _parentProfile;
   List<ChildOption> _children = [];
   String _parentUsername = ''; // ✅ store parent's username from Firestore
@@ -47,7 +48,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     _setupChildrenListener();
   }
 
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -72,46 +72,60 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
         .collection("Children")
         .snapshots()
         .listen(
-      (QuerySnapshot snapshot) {
-        print('=== REAL-TIME UPDATE RECEIVED ===');
-        print('Snapshot size: ${snapshot.docs.length}');
-        
-        final childrenList = snapshot.docs
-            .map((doc) {
-              print('Processing child doc: ${doc.id}');
-              print('Child data: ${doc.data()}');
-              final childOption = ChildOption.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
-              print('Created ChildOption: ID=${childOption.id}, firstName=${childOption.firstName}');
-              return childOption;
-            })
-            .where((c) {
-              final hasName = c.firstName.trim().isNotEmpty;
-              print('Child ${c.firstName} (ID: ${c.id}) has valid name: $hasName');
-              return hasName;
-            })
-            .toList();
-        
-        print('Filtered to ${childrenList.length} children');
-        print('Children names: ${childrenList.map((c) => c.firstName).toList()}');
+          (QuerySnapshot snapshot) {
+            print('=== REAL-TIME UPDATE RECEIVED ===');
+            print('Snapshot size: ${snapshot.docs.length}');
 
-        if (mounted) {
-          setState(() {
-            _children = childrenList;
-          });
-          print('=== CHILDREN LIST UPDATED IN REAL-TIME ===');
-          print('New children count: ${_children.length}');
-          print('Children in state: ${_children.map((c) => c.firstName).toList()}');
-        } else {
-          print('Widget not mounted, skipping setState');
-        }
-      },
-      onError: (error) {
-        print('Error in children listener: $error');
-        if (mounted) {
-          _showToast('Error loading children: $error', ToastificationType.error);
-        }
-      },
-    );
+            final childrenList = snapshot.docs
+                .map((doc) {
+                  print('Processing child doc: ${doc.id}');
+                  print('Child data: ${doc.data()}');
+                  final childOption = ChildOption.fromFirestore(
+                    doc.id,
+                    doc.data() as Map<String, dynamic>,
+                  );
+                  print(
+                    'Created ChildOption: ID=${childOption.id}, firstName=${childOption.firstName}',
+                  );
+                  return childOption;
+                })
+                .where((c) {
+                  final hasName = c.firstName.trim().isNotEmpty;
+                  print(
+                    'Child ${c.firstName} (ID: ${c.id}) has valid name: $hasName',
+                  );
+                  return hasName;
+                })
+                .toList();
+
+            print('Filtered to ${childrenList.length} children');
+            print(
+              'Children names: ${childrenList.map((c) => c.firstName).toList()}',
+            );
+
+            if (mounted) {
+              setState(() {
+                _children = childrenList;
+              });
+              print('=== CHILDREN LIST UPDATED IN REAL-TIME ===');
+              print('New children count: ${_children.length}');
+              print(
+                'Children in state: ${_children.map((c) => c.firstName).toList()}',
+              );
+            } else {
+              print('Widget not mounted, skipping setState');
+            }
+          },
+          onError: (error) {
+            print('Error in children listener: $error');
+            if (mounted) {
+              _showToast(
+                'Error loading children: $error',
+                ToastificationType.error,
+              );
+            }
+          },
+        );
   }
 
   // Fill the editing controllers from the loaded _parentProfile.
@@ -146,7 +160,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     }
     _populateControllers();
   }
-
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
@@ -190,19 +203,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
       title: Text(message),
       autoCloseDuration: const Duration(seconds: 3),
     );
-  }
-
-  void _showSetupChildDialog() async {
-    print('=== NAVIGATING TO SETUP CHILD SCREEN ===');
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            SetupChildScreen(parentId: _uid, parentUsername: _parentUsername),
-      ),
-    );
-    print('=== RETURNED FROM SETUP CHILD SCREEN ===');
-    print('Real-time listener will automatically update the list');
   }
 
   void _onNavTap(BuildContext context, int index) {
@@ -269,6 +269,8 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     final isTablet = screenWidth >= 600;
     final isDesktop = screenWidth >= 1024;
     final isSmallScreen = screenHeight < 600;
+    final isLargeScreen = screenWidth >= 1200;
+    final isExtraSmallScreen = screenWidth < 360;
 
     // 🧠 If _parentProfile is still null, show a loading screen
     if (_parentProfile == null) {
@@ -277,32 +279,63 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
 
     // ✅ Once data is loaded, build the actual UI
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: isDesktop
-                ? 48.w
-                : isTablet
-                ? 32.w
-                : 16.w,
-            vertical: isSmallScreen ? 12.h : 20.h,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFF8FAFC),
+              const Color(0xFFF1F5F9),
+              const Color(0xFFE2E8F0).withOpacity(0.3),
+            ],
+            stops: const [0.0, 0.6, 1.0],
           ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: isDesktop
-                  ? 800.w
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isLargeScreen
+                  ? 64.w
+                  : isDesktop
+                  ? 48.w
                   : isTablet
-                  ? 600.w
-                  : double.infinity,
+                  ? 32.w
+                  : isExtraSmallScreen
+                  ? 12.w
+                  : 16.w,
+              vertical: isSmallScreen ? 12.h : 20.h,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildProfileSection(isTablet, isDesktop, isSmallScreen),
-                SizedBox(height: isSmallScreen ? 16.h : 24.h),
-                _buildChildrenSection(isTablet, isDesktop, isSmallScreen),
-              ],
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isLargeScreen
+                    ? 1000.w
+                    : isDesktop
+                    ? 800.w
+                    : isTablet
+                    ? 600.w
+                    : double.infinity,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildGamifiedProfileSection(
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                    isLargeScreen,
+                    isExtraSmallScreen,
+                  ),
+                  SizedBox(height: isSmallScreen ? 16.h : 24.h),
+                  _buildGamifiedChildrenSection(
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                    isLargeScreen,
+                    isExtraSmallScreen,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -310,41 +343,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
       bottomNavigationBar: CustomBottomNavigationBar(
         currentIndex: 0,
         onTap: (index) => _onNavTap(context, index),
-      ),
-    );
-  }
-
-  Widget _buildProfileInformation() {
-    return Padding(
-      padding: EdgeInsets.all(20.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Profile Information',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (!_isEditing)
-                TextButton.icon(
-                  onPressed: () => setState(() => _isEditing = true),
-                  icon: Icon(Icons.edit, color: Colors.white, size: 16.sp),
-                  label: Text(
-                    'Edit',
-                    style: TextStyle(color: Colors.white, fontSize: 12.sp),
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          _isEditing ? _buildEditForm() : _buildProfileDetails(),
-        ],
       ),
     );
   }
@@ -414,100 +412,248 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     );
   }
 
-  Widget _buildProfileSection(
+  Widget _buildGamifiedProfileSection(
     bool isTablet,
     bool isDesktop,
     bool isSmallScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
   ) {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF10B981), Color(0xFF8B5CF6)],
+          colors: [
+            Color(0xFF667EEA), // Vibrant blue
+            Color(0xFF764BA2), // Rich purple
+            Color(0xFFF093FB), // Pink accent
+          ],
+          stops: [0.0, 0.6, 1.0],
         ),
-        borderRadius: BorderRadius.circular(isDesktop ? 24.r : 20.r),
+        borderRadius: BorderRadius.circular(
+          isLargeScreen
+              ? 32.r
+              : isDesktop
+              ? 28.r
+              : isTablet
+              ? 24.r
+              : 20.r,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF667EEA).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: const Color(0xFF764BA2).withOpacity(0.2),
+            blurRadius: 40,
+            offset: const Offset(0, 16),
+            spreadRadius: -4,
+          ),
+        ],
       ),
       child: Column(
         children: [
           Padding(
             padding: EdgeInsets.all(
-              isDesktop
+              isLargeScreen
+                  ? 32.w
+                  : isDesktop
                   ? 24.w
                   : isTablet
                   ? 20.w
+                  : isExtraSmallScreen
+                  ? 12.w
                   : 16.w,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Enhanced avatar with glass effect
                 GestureDetector(
                   onTap: _isEditing ? _pickImage : null,
-                  child: CircleAvatar(
-                    radius: isDesktop
-                        ? 40.r
-                        : isTablet
-                        ? 35.r
-                        : isSmallScreen
-                        ? 25.r
-                        : 30.r,
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                    backgroundImage: _selectedImage != null
-                        ? FileImage(_selectedImage!)
-                        : (_parentProfile?.avatar != null
-                                  ? NetworkImage(_parentProfile!.avatar!)
-                                  : null)
-                              as ImageProvider<Object>?,
-                    child:
-                        _selectedImage == null &&
-                            (_parentProfile?.avatar == null)
-                        ? Icon(
-                            Icons.person,
-                            color: Colors.white,
-                            size: isDesktop
-                                ? 40.sp
-                                : isTablet
-                                ? 35.sp
-                                : isSmallScreen
-                                ? 25.sp
-                                : 30.sp,
-                          )
-                        : null,
-                  ),
-                ),
-                SizedBox(width: isDesktop ? 16.w : 12.w),
-                Expanded(
-                  child: Text(
-                    'Hello, ${_parentProfile!.firstName}!',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isDesktop
-                          ? 24.sp
-                          : isTablet
-                          ? 22.sp
-                          : isSmallScreen
-                          ? 16.sp
-                          : 20.sp,
-                      fontWeight: FontWeight.bold,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
+                    child: CircleAvatar(
+                      radius: isLargeScreen
+                          ? 50.r
+                          : isDesktop
+                          ? 45.r
+                          : isTablet
+                          ? 40.r
+                          : isSmallScreen
+                          ? 28.r
+                          : isExtraSmallScreen
+                          ? 25.r
+                          : 35.r,
+                      backgroundColor: Colors.white.withOpacity(0.25),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 2,
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: isLargeScreen
+                              ? 48.r
+                              : isDesktop
+                              ? 43.r
+                              : isTablet
+                              ? 38.r
+                              : isSmallScreen
+                              ? 26.r
+                              : isExtraSmallScreen
+                              ? 23.r
+                              : 33.r,
+                          backgroundColor: Colors.transparent,
+                          backgroundImage: _selectedImage != null
+                              ? FileImage(_selectedImage!)
+                              : (_parentProfile?.avatar != null
+                                        ? NetworkImage(_parentProfile!.avatar!)
+                                        : null)
+                                    as ImageProvider<Object>?,
+                          child:
+                              _selectedImage == null &&
+                                  (_parentProfile?.avatar == null)
+                              ? Icon(
+                                  Icons.person_rounded,
+                                  color: Colors.white,
+                                  size: isLargeScreen
+                                      ? 40.sp
+                                      : isDesktop
+                                      ? 35.sp
+                                      : isTablet
+                                      ? 30.sp
+                                      : isSmallScreen
+                                      ? 18.sp
+                                      : isExtraSmallScreen
+                                      ? 16.sp
+                                      : 25.sp,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(
-                    _isExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: Colors.white,
-                    size: isDesktop
-                        ? 32.sp
-                        : isTablet
-                        ? 30.sp
-                        : isSmallScreen
-                        ? 24.sp
-                        : 28.sp,
+                SizedBox(
+                  width: isLargeScreen
+                      ? 24.w
+                      : isDesktop
+                      ? 20.w
+                      : isTablet
+                      ? 16.w
+                      : isExtraSmallScreen
+                      ? 8.w
+                      : 12.w,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello, ${_parentProfile!.firstName}!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: isLargeScreen
+                              ? 32.sp
+                              : isDesktop
+                              ? 28.sp
+                              : isTablet
+                              ? 26.sp
+                              : isSmallScreen
+                              ? 18.sp
+                              : isExtraSmallScreen
+                              ? 16.sp
+                              : 24.sp,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.2),
+                              offset: const Offset(0, 2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 4.h),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isDesktop ? 12.w : 10.w,
+                          vertical: isDesktop ? 4.h : 3.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(
+                            isDesktop ? 12.r : 10.r,
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'Family Manager',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isDesktop ? 12.sp : 10.sp,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  onPressed: () => setState(() => _isExpanded = !_isExpanded),
+                ),
+                // Enhanced expand button
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(
+                      isDesktop ? 12.r : 10.r,
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: IconButton(
+                    icon: Icon(
+                      _isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: Colors.white,
+                      size: isDesktop
+                          ? 28.sp
+                          : isTablet
+                          ? 26.sp
+                          : isSmallScreen
+                          ? 20.sp
+                          : 24.sp,
+                    ),
+                    onPressed: () => setState(() => _isExpanded = !_isExpanded),
+                  ),
                 ),
               ],
             ),
@@ -591,7 +737,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
             message: 'Username cannot be changed',
           ),
           _buildNonEditableField(
-            label: 'Email', 
+            label: 'Email',
             value: _parentProfile!.email,
             message: 'Email cannot be changed',
           ),
@@ -678,45 +824,10 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     );
   }
 
-  Widget _buildDisplayField({required String label, required String value}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 10.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 12.sp,
-            ),
-          ),
-          SizedBox(height: 4.h),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(8.r),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
-            ),
-            child: Text(
-              value,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
-                fontSize: 12.sp,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildNonEditableField({
-    required String label, 
-    required String value, 
-    required String message
+    required String label,
+    required String value,
+    required String message,
   }) {
     return Padding(
       padding: EdgeInsets.only(bottom: 10.h),
@@ -757,547 +868,909 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     );
   }
 
-  Widget _buildChildrenSection(
+  Widget _buildGamifiedChildrenSection(
     bool isTablet,
     bool isDesktop,
     bool isSmallScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Children',
-              style: TextStyle(
-                fontSize: isDesktop
-                    ? 22.sp
-                    : isTablet
-                    ? 20.sp
-                    : isSmallScreen
-                    ? 16.sp
-                    : 18.sp,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+        // Gamified header with glass effect
+        Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isLargeScreen
+                ? 32.w
+                : isDesktop
+                ? 24.w
+                : isTablet
+                ? 20.w
+                : isExtraSmallScreen
+                ? 12.w
+                : 16.w,
+            vertical: isLargeScreen
+                ? 24.h
+                : isDesktop
+                ? 20.h
+                : isTablet
+                ? 16.h
+                : isExtraSmallScreen
+                ? 8.h
+                : 12.h,
+          ),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(0.9),
+                Colors.white.withOpacity(0.7),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            IconButton(
-              onPressed: () async {
-                print('=== NAVIGATING TO SETUP CHILD SCREEN (Add Button) ===');
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SetupChildScreen(
-                      parentId: _uid,
-                      parentUsername: _parentUsername,
+            borderRadius: BorderRadius.circular(
+              isLargeScreen
+                  ? 24.r
+                  : isDesktop
+                  ? 20.r
+                  : isTablet
+                  ? 16.r
+                  : 14.r,
+            ),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.5),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF667EEA).withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+                spreadRadius: 2,
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.8),
+                blurRadius: 20,
+                offset: const Offset(0, -2),
+                spreadRadius: -2,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(isDesktop ? 12.w : 10.w),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(
+                        isDesktop ? 14.r : 12.r,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF667EEA).withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.family_restroom_rounded,
+                      color: Colors.white,
+                      size: isDesktop
+                          ? 24.sp
+                          : isTablet
+                          ? 22.sp
+                          : 18.sp,
                     ),
                   ),
-                );
-                print('=== RETURNED FROM SETUP CHILD SCREEN (Add Button) ===');
-                print('Real-time listener will automatically update the list');
-              },
-              icon: Icon(
-                Icons.add_circle_outline,
-                color: const Color(0xFF8B5CF6),
-                size: isDesktop ? 28.sp : isTablet ? 26.sp : isSmallScreen ? 20.sp : 24.sp,
-              ),
-              tooltip: 'Add Child',
-            ),
-          ],
-        ),
-        SizedBox(
-          height: isDesktop
-              ? 16.h
-              : isTablet
-              ? 14.h
-              : isSmallScreen
-              ? 10.h
-              : 12.h,
-        ),
-        if (_children.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(
-              isDesktop
-                  ? 32.w
-                  : isTablet
-                  ? 24.w
-                  : isSmallScreen
-                  ? 16.w
-                  : 20.w,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(
-                isDesktop
-                    ? 16.r
-                    : isTablet
-                    ? 14.r
-                    : isSmallScreen
-                    ? 10.r
-                    : 12.r,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.child_care,
-                  size: isDesktop
-                      ? 64.sp
-                      : isTablet
-                      ? 56.sp
-                      : isSmallScreen
-                      ? 40.sp
-                      : 48.sp,
-                  color: Colors.grey[400],
-                ),
-                SizedBox(
-                  height: isDesktop
-                      ? 12.h
-                      : isTablet
-                      ? 10.h
-                      : isSmallScreen
-                      ? 6.h
-                      : 8.h,
-                ),
-                Text(
-                  'No children added yet',
-                  style: TextStyle(
-                    fontSize: isDesktop
-                        ? 18.sp
-                        : isTablet
-                        ? 16.sp
-                        : isSmallScreen
-                        ? 12.sp
-                        : 14.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _children.length,
-            itemBuilder: (context, index) {
-              return _buildVerticalChildCard(
-                _children[index],
-                isTablet,
-                isDesktop,
-                isSmallScreen,
-              );
-            },
-          ),
-      ],
-    );
-  }
-
-  Widget _buildVerticalChildCard(
-    ChildOption child,
-    bool isTablet,
-    bool isDesktop,
-    bool isSmallScreen,
-  ) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.r),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12.r),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChildProfileViewScreen(
-                  child: child,
-                  parentId: _uid,
-                ),
-              ),
-            );
-          },
-          child: Padding(
-            padding: EdgeInsets.all(16.w),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r,
-                  backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.1),
-                  child: child.avatar != null
-                      ? ClipOval(
-                          child: Image.network(
-                            child.avatar!,
-                            width: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
-                            height: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stack) {
-                              return Text(
-                                child.initial,
-                                style: TextStyle(
-                                  fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF8B5CF6),
-                                ),
-                              );
-                            },
-                          ),
-                        )
-                      : Text(
-                          child.initial,
-                          style: TextStyle(
-                            fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF8B5CF6),
-                          ),
-                        ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: Column(
+                  SizedBox(width: isDesktop ? 16.w : 12.w),
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        child.firstName,
+                        'My Children',
                         style: TextStyle(
-                          fontSize: isDesktop ? 18.sp : isTablet ? 16.sp : isSmallScreen ? 14.sp : 16.sp,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                          fontSize: isDesktop
+                              ? 24.sp
+                              : isTablet
+                              ? 22.sp
+                              : isSmallScreen
+                              ? 18.sp
+                              : 20.sp,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1E293B),
+                          letterSpacing: 0.3,
                         ),
                       ),
-                      SizedBox(height: 4.h),
+                      SizedBox(height: 2.h),
                       Text(
-                        child.lastName,
+                        'View their wallets & information',
                         style: TextStyle(
-                          fontSize: isDesktop ? 14.sp : isTablet ? 13.sp : isSmallScreen ? 11.sp : 12.sp,
-                          color: Colors.grey[600],
+                          fontSize: isDesktop ? 12.sp : 10.sp,
+                          color: const Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.grey[400],
-                  size: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChildCard(
-    ChildOption child,
-    bool isTablet,
-    bool isDesktop,
-    bool isSmallScreen,
-    bool isWideScreen,
-  ) {
-    // Calculate responsive dimensions
-    final cardWidth = isWideScreen
-        ? 140.w
-        : isDesktop
-        ? 120.w
-        : isTablet
-        ? 110.w
-        : isSmallScreen
-        ? 90.w
-        : 100.w;
-    final cardPadding = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 8.w
-        : 10.w;
-    final avatarRadius = isWideScreen
-        ? 40.r
-        : isDesktop
-        ? 35.r
-        : isTablet
-        ? 30.r
-        : isSmallScreen
-        ? 20.r
-        : 25.r;
-    final borderRadius = isWideScreen
-        ? 18.r
-        : isDesktop
-        ? 16.r
-        : isTablet
-        ? 14.r
-        : isSmallScreen
-        ? 10.r
-        : 12.r;
-    final marginRight = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 10.w
-        : 12.w;
-    final spacing = isWideScreen
-        ? 14.h
-        : isDesktop
-        ? 12.h
-        : isTablet
-        ? 10.h
-        : isSmallScreen
-        ? 6.h
-        : 8.h;
-    final nameFontSize = isWideScreen
-        ? 18.sp
-        : isDesktop
-        ? 16.sp
-        : isTablet
-        ? 14.sp
-        : isSmallScreen
-        ? 10.sp
-        : 12.sp;
-    final lastNameFontSize = isWideScreen
-        ? 16.sp
-        : isDesktop
-        ? 14.sp
-        : isTablet
-        ? 12.sp
-        : isSmallScreen
-        ? 8.sp
-        : 10.sp;
-    final initialFontSize = isWideScreen
-        ? 32.sp
-        : isDesktop
-        ? 28.sp
-        : isTablet
-        ? 24.sp
-        : isSmallScreen
-        ? 16.sp
-        : 20.sp;
-
-    return Container(
-      width: cardWidth,
-      margin: EdgeInsets.only(right: marginRight),
-      child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-        elevation: 2,
-        child: Padding(
-          padding: EdgeInsets.all(cardPadding),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircleAvatar(
-                radius: avatarRadius,
-                backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.1),
-                child: child.avatar != null
-                    ? ClipOval(
-                        child: Image.network(
-                          child.avatar!,
-                          width: avatarRadius * 2,
-                          height: avatarRadius * 2,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stack) {
-                            return Text(
-                              child.initial,
-                              style: TextStyle(
-                                fontSize: initialFontSize,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF8B5CF6),
-                              ),
-                            );
-                          },
+                  if (_children.isNotEmpty) ...[
+                    SizedBox(width: isDesktop ? 12.w : 8.w),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isDesktop ? 12.w : 10.w,
+                        vertical: isDesktop ? 6.h : 4.h,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFF59E0B), Color(0xFFEF4444)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                      )
-                    : Text(
-                        child.initial,
+                        borderRadius: BorderRadius.circular(
+                          isDesktop ? 16.r : 14.r,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFF59E0B).withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        '${_children.length}',
                         style: TextStyle(
-                          fontSize: initialFontSize,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF8B5CF6),
+                          color: Colors.white,
+                          fontSize: isDesktop ? 14.sp : 12.sp,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
                         ),
                       ),
+                    ),
+                  ],
+                ],
               ),
-              SizedBox(height: spacing),
               Flexible(
-                child: Text(
-                  child.firstName,
-                  style: TextStyle(
-                    fontSize: nameFontSize,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      isLargeScreen
+                          ? 18.r
+                          : isDesktop
+                          ? 16.r
+                          : isTablet
+                          ? 14.r
+                          : 12.r,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                        spreadRadius: 1,
+                      ),
+                    ],
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              SizedBox(height: 2.h),
-              Flexible(
-                child: Text(
-                  child.lastName,
-                  style: TextStyle(
-                    fontSize: lastNameFontSize,
-                    color: Colors.grey[600],
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(
+                        isLargeScreen
+                            ? 18.r
+                            : isDesktop
+                            ? 16.r
+                            : isTablet
+                            ? 14.r
+                            : 12.r,
+                      ),
+                      onTap: () async {
+                        print(
+                          '=== NAVIGATING TO SETUP CHILD SCREEN (Add Button) ===',
+                        );
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SetupChildScreen(
+                              parentId: _uid,
+                              parentUsername: _parentUsername,
+                            ),
+                          ),
+                        );
+                        print(
+                          '=== RETURNED FROM SETUP CHILD SCREEN (Add Button) ===',
+                        );
+                        print(
+                          'Real-time listener will automatically update the list',
+                        );
+                      },
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isLargeScreen
+                              ? 20.w
+                              : isDesktop
+                              ? 16.w
+                              : isTablet
+                              ? 14.w
+                              : isExtraSmallScreen
+                              ? 8.w
+                              : 12.w,
+                          vertical: isLargeScreen
+                              ? 16.h
+                              : isDesktop
+                              ? 14.h
+                              : isTablet
+                              ? 12.h
+                              : isExtraSmallScreen
+                              ? 8.h
+                              : 10.h,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.add_rounded,
+                              color: Colors.white,
+                              size: isLargeScreen
+                                  ? 22.sp
+                                  : isDesktop
+                                  ? 20.sp
+                                  : isTablet
+                                  ? 18.sp
+                                  : isExtraSmallScreen
+                                  ? 14.sp
+                                  : 16.sp,
+                            ),
+                            SizedBox(
+                              width: isLargeScreen
+                                  ? 10.w
+                                  : isDesktop
+                                  ? 8.w
+                                  : isTablet
+                                  ? 6.w
+                                  : isExtraSmallScreen
+                                  ? 4.w
+                                  : 5.w,
+                            ),
+                            Flexible(
+                              child: Text(
+                                'Add Child',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: isLargeScreen
+                                      ? 18.sp
+                                      : isDesktop
+                                      ? 16.sp
+                                      : isTablet
+                                      ? 14.sp
+                                      : isExtraSmallScreen
+                                      ? 10.sp
+                                      : 12.sp,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.3,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
                 ),
               ),
             ],
           ),
         ),
+        SizedBox(
+          height: isDesktop
+              ? 20.h
+              : isTablet
+              ? 16.h
+              : 12.h,
+        ),
+
+        // Children list or empty state
+        if (_children.isEmpty)
+          _buildGamifiedEmptyState(
+            isTablet,
+            isDesktop,
+            isSmallScreen,
+            isLargeScreen,
+            isExtraSmallScreen,
+          )
+        else
+          _buildGamifiedChildrenList(
+            isTablet,
+            isDesktop,
+            isSmallScreen,
+            isLargeScreen,
+            isExtraSmallScreen,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildGamifiedEmptyState(
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(
+        isLargeScreen
+            ? 56.w
+            : isDesktop
+            ? 48.w
+            : isTablet
+            ? 40.w
+            : isSmallScreen
+            ? 28.w
+            : isExtraSmallScreen
+            ? 24.w
+            : 32.w,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withOpacity(0.9),
+            Colors.white.withOpacity(0.7),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(isDesktop ? 24.r : 20.r),
+        border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF667EEA).withOpacity(0.08),
+            blurRadius: 30,
+            offset: const Offset(0, 12),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.8),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+            spreadRadius: -2,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: EdgeInsets.all(isDesktop ? 32.w : 28.w),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF667EEA),
+                  Color(0xFF764BA2),
+                  Color(0xFFF093FB),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF667EEA).withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.child_care_rounded,
+              size: isDesktop
+                  ? 56.sp
+                  : isTablet
+                  ? 48.sp
+                  : isSmallScreen
+                  ? 36.sp
+                  : 42.sp,
+              color: Colors.white,
+            ),
+          ),
+          SizedBox(
+            height: isDesktop
+                ? 24.h
+                : isTablet
+                ? 20.h
+                : 16.h,
+          ),
+          Text(
+            'No children yet',
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 24.sp
+                  : isTablet
+                  ? 22.sp
+                  : isSmallScreen
+                  ? 18.sp
+                  : 20.sp,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1E293B),
+              letterSpacing: 0.3,
+            ),
+          ),
+          SizedBox(height: isDesktop ? 8.h : 6.h),
+          Text(
+            'Add your first child to start managing\ntheir tasks and rewards',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: isDesktop
+                  ? 16.sp
+                  : isTablet
+                  ? 15.sp
+                  : isSmallScreen
+                  ? 13.sp
+                  : 14.sp,
+              color: const Color(0xFF64748B),
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(
+            height: isDesktop
+                ? 32.h
+                : isTablet
+                ? 28.h
+                : 24.h,
+          ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF667EEA),
+                  Color(0xFF764BA2),
+                  Color(0xFFF093FB),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(isDesktop ? 16.r : 14.r),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF667EEA).withOpacity(0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(isDesktop ? 16.r : 14.r),
+                onTap: () async {
+                  print(
+                    '=== NAVIGATING TO SETUP CHILD SCREEN (Empty State) ===',
+                  );
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SetupChildScreen(
+                        parentId: _uid,
+                        parentUsername: _parentUsername,
+                      ),
+                    ),
+                  );
+                  print(
+                    '=== RETURNED FROM SETUP CHILD SCREEN (Empty State) ===',
+                  );
+                  print(
+                    'Real-time listener will automatically update the list',
+                  );
+                },
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isLargeScreen
+                        ? 36.w
+                        : isDesktop
+                        ? 32.w
+                        : isTablet
+                        ? 28.w
+                        : isExtraSmallScreen
+                        ? 20.w
+                        : 24.w,
+                    vertical: isLargeScreen
+                        ? 18.h
+                        : isDesktop
+                        ? 16.h
+                        : isTablet
+                        ? 14.h
+                        : isExtraSmallScreen
+                        ? 10.h
+                        : 12.h,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_rounded,
+                        color: Colors.white,
+                        size: isLargeScreen
+                            ? 22.sp
+                            : isDesktop
+                            ? 20.sp
+                            : isTablet
+                            ? 18.sp
+                            : isExtraSmallScreen
+                            ? 14.sp
+                            : 16.sp,
+                      ),
+                      SizedBox(
+                        width: isLargeScreen
+                            ? 12.w
+                            : isDesktop
+                            ? 10.w
+                            : isTablet
+                            ? 8.w
+                            : isExtraSmallScreen
+                            ? 6.w
+                            : 7.w,
+                      ),
+                      Flexible(
+                        child: Text(
+                          'Add Your First Child',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isLargeScreen
+                                ? 18.sp
+                                : isDesktop
+                                ? 16.sp
+                                : isTablet
+                                ? 14.sp
+                                : isExtraSmallScreen
+                                ? 10.sp
+                                : 12.sp,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildAddChildCard(
+  Widget _buildGamifiedChildrenList(
     bool isTablet,
     bool isDesktop,
     bool isSmallScreen,
-    bool isWideScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
   ) {
-    // Calculate responsive dimensions
-    final cardWidth = isWideScreen
-        ? 140.w
-        : isDesktop
-        ? 120.w
-        : isTablet
-        ? 110.w
-        : isSmallScreen
-        ? 90.w
-        : 100.w;
-    final cardPadding = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 8.w
-        : 10.w;
-    final iconSize = isWideScreen
-        ? 70.w
-        : isDesktop
-        ? 60.w
-        : isTablet
-        ? 55.w
-        : isSmallScreen
-        ? 40.w
-        : 45.w;
-    final borderRadius = isWideScreen
-        ? 18.r
-        : isDesktop
-        ? 16.r
-        : isTablet
-        ? 14.r
-        : isSmallScreen
-        ? 10.r
-        : 12.r;
-    final marginRight = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 10.w
-        : 12.w;
-    final spacing = isWideScreen
-        ? 10.h
-        : isDesktop
-        ? 8.h
-        : isTablet
-        ? 7.h
-        : isSmallScreen
-        ? 4.h
-        : 6.h;
-    final textFontSize = isWideScreen
-        ? 16.sp
-        : isDesktop
-        ? 14.sp
-        : isTablet
-        ? 13.sp
-        : isSmallScreen
-        ? 9.sp
-        : 11.sp;
-    final iconFontSize = isWideScreen
-        ? 32.sp
-        : isDesktop
-        ? 28.sp
-        : isTablet
-        ? 24.sp
-        : isSmallScreen
-        ? 18.sp
-        : 22.sp;
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _children.length,
+      itemBuilder: (context, index) {
+        return _buildGamifiedChildCard(
+          _children[index],
+          isTablet,
+          isDesktop,
+          isSmallScreen,
+          isLargeScreen,
+          isExtraSmallScreen,
+        );
+      },
+    );
+  }
+
+  Widget _buildGamifiedChildCard(
+    ChildOption child,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
+  ) {
+    // Mock data for gamification - in real app, this would come from Firebase
+    final childIndex = _children.indexOf(child);
+    final tasksCompleted = (childIndex % 5) + 3; // 3-7 tasks
+    final rewardsEarned = (childIndex % 3) + 1; // 1-3 rewards
+    final progressPercentage =
+        (tasksCompleted / 10) * 100; // Progress out of 10
 
     return Container(
-      width: cardWidth,
-      margin: EdgeInsets.only(right: marginRight),
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(borderRadius),
+      margin: EdgeInsets.only(
+        bottom: isLargeScreen
+            ? 24.h
+            : isDesktop
+            ? 20.h
+            : isTablet
+            ? 18.h
+            : isSmallScreen
+            ? 12.h
+            : isExtraSmallScreen
+            ? 10.h
+            : 16.h,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withOpacity(0.95),
+            Colors.white.withOpacity(0.85),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(
+          isLargeScreen
+              ? 24.r
+              : isDesktop
+              ? 20.r
+              : isTablet
+              ? 18.r
+              : 16.r,
+        ),
+        border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF667EEA).withOpacity(0.08),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.9),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+            spreadRadius: -2,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(isDesktop ? 20.r : 18.r),
         child: InkWell(
-          borderRadius: BorderRadius.circular(borderRadius),
-          onTap: () async {
-            print('=== NAVIGATING TO SETUP CHILD SCREEN (Card) ===');
-            await Navigator.push(
+          borderRadius: BorderRadius.circular(isDesktop ? 20.r : 18.r),
+          onTap: () {
+            Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => SetupChildScreen(
-                  parentId: _uid,
-                  parentUsername: _parentUsername,
-                ),
+                builder: (_) =>
+                    ChildProfileViewScreen(child: child, parentId: _uid),
               ),
             );
-            print('=== RETURNED FROM SETUP CHILD SCREEN (Card) ===');
-            print('Real-time listener will automatically update the list');
           },
-
-          child: Padding(
-            padding: EdgeInsets.all(cardPadding),
+          child: Container(
+            padding: EdgeInsets.all(
+              isLargeScreen
+                  ? 28.w
+                  : isDesktop
+                  ? 24.w
+                  : isTablet
+                  ? 20.w
+                  : isSmallScreen
+                  ? 14.w
+                  : isExtraSmallScreen
+                  ? 12.w
+                  : 18.w,
+            ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: iconSize,
-                  height: iconSize,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.add,
-                    color: const Color(0xFF8B5CF6),
-                    size: iconFontSize,
-                  ),
-                ),
-                SizedBox(height: spacing),
-                Flexible(
-                  child: Text(
-                    'Add Child',
-                    style: TextStyle(
-                      fontSize: textFontSize,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF8B5CF6),
+                Row(
+                  children: [
+                    // Enhanced avatar with glow effect
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF667EEA).withOpacity(0.2),
+                            blurRadius: 15,
+                            offset: const Offset(0, 5),
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: isLargeScreen
+                            ? 40.r
+                            : isDesktop
+                            ? 36.r
+                            : isTablet
+                            ? 32.r
+                            : isSmallScreen
+                            ? 24.r
+                            : isExtraSmallScreen
+                            ? 22.r
+                            : 30.r,
+                        backgroundColor: Colors.transparent,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF667EEA),
+                                const Color(0xFF764BA2),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: child.avatar != null
+                              ? ClipOval(
+                                  child: Image.network(
+                                    child.avatar!,
+                                    width:
+                                        (isDesktop
+                                            ? 36.r
+                                            : isTablet
+                                            ? 32.r
+                                            : isSmallScreen
+                                            ? 28.r
+                                            : 30.r) *
+                                        2,
+                                    height:
+                                        (isDesktop
+                                            ? 36.r
+                                            : isTablet
+                                            ? 32.r
+                                            : isSmallScreen
+                                            ? 28.r
+                                            : 30.r) *
+                                        2,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stack) {
+                                      return Center(
+                                        child: Text(
+                                          child.initial,
+                                          style: TextStyle(
+                                            fontSize: isDesktop
+                                                ? 22.sp
+                                                : isTablet
+                                                ? 20.sp
+                                                : isSmallScreen
+                                                ? 16.sp
+                                                : 18.sp,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    child.initial,
+                                    style: TextStyle(
+                                      fontSize: isDesktop
+                                          ? 22.sp
+                                          : isTablet
+                                          ? 20.sp
+                                          : isSmallScreen
+                                          ? 16.sp
+                                          : 18.sp,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                    SizedBox(width: isDesktop ? 20.w : 16.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            child.firstName,
+                            style: TextStyle(
+                              fontSize: isDesktop
+                                  ? 20.sp
+                                  : isTablet
+                                  ? 18.sp
+                                  : isSmallScreen
+                                  ? 16.sp
+                                  : 17.sp,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF1E293B),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          SizedBox(height: isDesktop ? 4.h : 3.h),
+                          Text(
+                            child.lastName,
+                            style: TextStyle(
+                              fontSize: isDesktop
+                                  ? 14.sp
+                                  : isTablet
+                                  ? 13.sp
+                                  : isSmallScreen
+                                  ? 11.sp
+                                  : 12.sp,
+                              color: const Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Gamified stats badges
+                    // (Removed stats badges)
+                    SizedBox.shrink(),
+                  ],
+                ),
+                SizedBox(height: isDesktop ? 16.h : 14.h),
+
+                // Progress bar
+                SizedBox(height: isDesktop ? 12.h : 10.h),
+                // Action button
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isDesktop ? 16.w : 14.w,
+                    vertical: isDesktop ? 12.h : 10.h,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF667EEA).withOpacity(0.1),
+                        const Color(0xFF764BA2).withOpacity(0.1),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      isDesktop ? 12.r : 10.r,
+                    ),
+                    border: Border.all(
+                      color: const Color(0xFF667EEA).withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.visibility_rounded,
+                        color: const Color(0xFF667EEA),
+                        size: isDesktop ? 16.sp : 14.sp,
+                      ),
+                      SizedBox(width: isDesktop ? 8.w : 6.w),
+                      Text(
+                        'View Profile',
+                        style: TextStyle(
+                          fontSize: isDesktop ? 14.sp : 12.sp,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF667EEA),
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

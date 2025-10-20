@@ -24,6 +24,7 @@ class HaseelaService {
         return Child.fromFirestore(doc);
       }
       return null;
+      return Child.fromFirestore(doc); // ✅ This already includes level
     } catch (e) {
       print('Error getting child: $e');
       return null;

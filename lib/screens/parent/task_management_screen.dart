@@ -24,6 +24,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
 
   String selectedUserId = '';
   List<ChildOption> _children = [];
+  Map<String, List<Task>> _currentGroupedTasks = {};
 
   @override
   void initState() {
@@ -126,36 +127,12 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     }
   }
 
-  /// ✅ Show edit task bottom sheet
-  void _showEditTaskBottomSheet(Task task) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => EditTaskBottomSheet(task: task),
-    );
-  }
-
-  /// ✅ Show task details bottom sheet
-  _showTaskDetailsBottomSheet(Task task) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => TaskDetailsBottomSheet(
-        task: task,
-        childId: selectedUserId, // ✅ pass it here
-      ),
-    );
-  }
-
   /// ✅ Group tasks by status in the specified order
   Map<String, List<Task>> _groupTasksByStatus(List<Task> tasks) {
     final Map<String, List<Task>> grouped = {
       'Waiting Approval': [],
       'To-Do': [],
       'Completed': [],
-      'Rejected': [],
     };
 
     for (final task in tasks) {
@@ -176,21 +153,24 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     }
 
     return grouped;
+
+    return grouped;
   }
 
-  /// ✅ Get total count of items including headers
+  /// ✅ Get total count of items including headers (always show all groups)
   int _getTotalGroupedItemCount(Map<String, List<Task>> groupedTasks) {
     int count = 0;
     for (final entry in groupedTasks.entries) {
-      if (entry.value.isNotEmpty) {
-        count += 1; // Header
-        count += entry.value.length; // Tasks
+      count += 1; // Header (always included)
+      count += entry.value.length; // Tasks
+      if (entry.value.isEmpty) {
+        count += 1; // Empty placeholder text
       }
     }
     return count;
   }
 
-  /// ✅ Get item at specific index (header or task)
+  /// ✅ Get item at specific index (header, task, or empty placeholder)
   dynamic _getGroupedItemAtIndex(
     Map<String, List<Task>> groupedTasks,
     int index,
@@ -198,24 +178,46 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     int currentIndex = 0;
 
     for (final entry in groupedTasks.entries) {
-      if (entry.value.isNotEmpty) {
-        // Add header
+      // Always add header
+      if (currentIndex == index) {
+        return {'type': 'header', 'title': entry.key};
+      }
+      currentIndex++;
+
+      // Add tasks
+      for (final task in entry.value) {
         if (currentIndex == index) {
-          return entry.key;
+          return task;
         }
         currentIndex++;
+      }
 
-        // Add tasks
-        for (final task in entry.value) {
-          if (currentIndex == index) {
-            return task;
-          }
-          currentIndex++;
+      // Add empty placeholder if no tasks
+      if (entry.value.isEmpty) {
+        if (currentIndex == index) {
+          return {'type': 'empty', 'title': entry.key};
         }
+        currentIndex++;
       }
     }
 
     return null;
+  }
+
+  /// ✅ Build empty group placeholder widget
+  Widget _buildEmptyPlaceholder(String groupTitle) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 16.h),
+      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
+      child: Text(
+        'No tasks in this category',
+        style: TextStyle(
+          fontSize: 14.sp,
+          fontStyle: FontStyle.italic,
+          color: Colors.grey[600],
+        ),
+      ),
+    );
   }
 
   /// ✅ Build section header widget
@@ -284,8 +286,13 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
   }
 
   int _getTaskCountForStatus(String status) {
-    // This would need to be implemented based on your task grouping logic
-    // For now, returning 0 as placeholder
+    // Make sure data exists
+    if (_currentGroupedTasks.isEmpty) return 0;
+
+    // Match status key safely
+    if (_currentGroupedTasks.containsKey(status)) {
+      return _currentGroupedTasks[status]?.length ?? 0;
+    }
     return 0;
   }
 
@@ -701,7 +708,8 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                         }).toList();
 
                         // Group tasks by status
-                        final groupedTasks = _groupTasksByStatus(allTasks);
+                        _currentGroupedTasks = _groupTasksByStatus(allTasks);
+                        final groupedTasks = _currentGroupedTasks;
 
                         return Column(
                           children: [
@@ -717,9 +725,15 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                                     index,
                                   );
 
-                                  if (item is String) {
+                                  if (item is Map && item['type'] == 'header') {
                                     // This is a section header
-                                    return _buildSectionHeader(item);
+                                    return _buildSectionHeader(item['title']);
+                                  } else if (item is Map &&
+                                      item['type'] == 'empty') {
+                                    // This is an empty group placeholder
+                                    return _buildEmptyPlaceholder(
+                                      item['title'],
+                                    );
                                   } else if (item is Task) {
                                     // This is a task
                                     return Dismissible(
@@ -760,10 +774,36 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                                       },
                                       child: TaskCard(
                                         task: item,
-                                        onTapArrow: () =>
-                                            _showTaskDetailsBottomSheet(item),
-                                        onEdit: () =>
-                                            _showEditTaskBottomSheet(item),
+                                        onDelete: () async {
+                                          final confirmed =
+                                              await _confirmDelete(context);
+                                          if (confirmed) {
+                                            await _deleteTask(item.id);
+                                            if (context.mounted) {
+                                              toastification.show(
+                                                context: context,
+                                                type:
+                                                    ToastificationType.success,
+                                                style: ToastificationStyle
+                                                    .flatColored,
+                                                title: Text(
+                                                  'Task deleted',
+                                                  style: TextStyle(
+                                                    fontSize: 14.sp,
+                                                  ),
+                                                ),
+                                                description: Text(
+                                                  'The task has been removed',
+                                                  style: TextStyle(
+                                                    fontSize: 12.sp,
+                                                  ),
+                                                ),
+                                                autoCloseDuration:
+                                                    const Duration(seconds: 3),
+                                              );
+                                            }
+                                          }
+                                        },
                                       ),
                                     );
                                   }
@@ -1466,7 +1506,7 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
 
   Future<void> _approveTask(Task task) async {
     try {
-      // Show confirmation dialog
+      // Confirmation dialog
       bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext context) {
@@ -1482,26 +1522,18 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Are you sure you want to approve this task?',
-                  style: TextStyle(fontSize: 16.sp),
-                ),
+                Text('Are you sure you want to approve this task?'),
                 SizedBox(height: 8.h),
                 Text(
                   'Task: ${task.taskName}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[700],
-                    fontSize: 14.sp,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8.h),
                 Text(
                   'Allowance: +${task.allowance.toStringAsFixed(0)} ﷼',
                   style: TextStyle(
+                    color: Colors.green[700],
                     fontWeight: FontWeight.bold,
-                    color: Colors.green[600],
-                    fontSize: 14.sp,
                   ),
                 ),
               ],
@@ -1524,70 +1556,80 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
         },
       );
 
-      if (confirmed == true) {
-        // Show loading dialog
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Approving Task'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16.h),
-                  Text('Updating task status...'),
-                ],
-              ),
-            );
-          },
-        );
+      if (confirmed != true) return;
 
-        // Update task status to done
-        await FirebaseFirestore.instance
-            .collection('Parents')
-            .doc(FirebaseAuth.instance.currentUser!.uid)
-            .collection('Children')
-            .doc(widget.childId)
-            .collection('Tasks')
-            .doc(task.id)
-            .update({
-              'status': 'done',
-              'completedDate': FieldValue.serverTimestamp(),
-            });
-
-        // Close loading dialog
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-
-        // Close task details dialog
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Task approved successfully! +${task.allowance.toStringAsFixed(0)} ﷼ added to child\'s wallet',
-            ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          title: Text('Approving Task...'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Updating task status and balance...'),
+            ],
           ),
-        );
-      }
-    } catch (e) {
-      // Close loading dialog if open
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
+        ),
+      );
+
+      // References
+      final parentId = FirebaseAuth.instance.currentUser!.uid;
+      final childRef = FirebaseFirestore.instance
+          .collection('Parents')
+          .doc(parentId)
+          .collection('Children')
+          .doc(widget.childId);
+
+      final taskRef = childRef.collection('Tasks').doc(task.id);
+
+      // ✅ Step 1: Update the task status
+      await taskRef.update({
+        'status': 'done',
+        'completedDate': FieldValue.serverTimestamp(),
+      });
+
+      // ✅ Step 2: Fetch wallet document under the child
+      final walletSnapshot = await childRef.collection('Wallet').limit(1).get();
+
+      if (walletSnapshot.docs.isNotEmpty) {
+        final walletDoc = walletSnapshot.docs.first.reference;
+
+        // ✅ Step 3: Increment the totalBalance inside the wallet document
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          final walletData = await transaction.get(walletDoc);
+          if (walletData.exists) {
+            final currentBalance = (walletData.data()?['totalBalance'] ?? 0)
+                .toDouble();
+            transaction.update(walletDoc, {
+              'totalBalance': currentBalance + task.allowance,
+            });
+          }
+        });
+      } else {
+        debugPrint('⚠️ No wallet document found for this child.');
       }
 
-      // Show error message
+      // Close dialogs
+      Navigator.of(context).pop(); // Close loading dialog
+      Navigator.of(context).pop(); // Close bottom sheet
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error approving task: ${e.toString()}'),
+          content: Text(
+            '✅ Task approved successfully! +${task.allowance.toStringAsFixed(0)} ﷼ added to wallet.',
+          ),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error approving task: $e'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
         ),

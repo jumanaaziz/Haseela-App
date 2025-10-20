@@ -225,6 +225,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         parent: FirebaseFirestore.instance
             .collection('Parents')
             .doc('parent001'),
+        level: 1, // ✅ Added this line to satisfy required parameter
       );
       _currentChildId = 'fallback';
     });

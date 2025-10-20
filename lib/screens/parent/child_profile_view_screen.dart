@@ -31,6 +31,11 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
   StreamSubscription<QuerySnapshot>? _walletSubscription;
   StreamSubscription<QuerySnapshot>? _transactionSubscription;
 
+  // PIN visibility state
+  bool _isPinVisible = false;
+  Timer? _pinAutoMaskTimer;
+  String? _plainPin; // Temporary storage for plaintext PIN
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +59,9 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
       'pin_display': '123456', // Default PIN for now
     };
 
+    // Set plain PIN for demonstration (in real app, this would come from secure storage)
+    _plainPin = '123456';
+
     // Test Firebase connection first
     _testFirebaseConnection();
 
@@ -72,6 +80,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     _tabController.dispose();
     _walletSubscription?.cancel();
     _transactionSubscription?.cancel();
+    _pinAutoMaskTimer?.cancel();
     super.dispose();
   }
 
@@ -891,13 +900,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                     isDesktop,
                     isSmallScreen,
                   ),
-                  _buildInfoRow(
-                    'PIN',
-                    _childDetails!['pin_display'] ?? 'N/A',
-                    isTablet,
-                    isDesktop,
-                    isSmallScreen,
-                  ),
+                  _buildPinRow(isTablet, isDesktop, isSmallScreen),
                 ] else ...[
                   Column(
                     children: [
@@ -926,6 +929,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                               'email': widget.child.email ?? 'N/A',
                               'pin_display': '123456',
                             };
+                            _plainPin = '123456';
                           });
                         },
                         child: Text(
@@ -1063,10 +1067,6 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
           _buildSavingGoalProgress(wallet, isTablet, isDesktop, isSmallScreen),
           SizedBox(height: 20.h),
 
-          // Wallet Statistics
-          _buildWalletStatistics(wallet, isTablet, isDesktop, isSmallScreen),
-          SizedBox(height: 20.h),
-
           // Recent Transactions
           if (_childTransactions.isNotEmpty) ...[
             Text(
@@ -1098,6 +1098,34 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
         ],
       ),
     );
+  }
+
+  /// Toggle PIN visibility
+  void _togglePinVisibility() {
+    setState(() {
+      _isPinVisible = !_isPinVisible;
+    });
+
+    // Cancel existing timer if any
+    _pinAutoMaskTimer?.cancel();
+
+    // If PIN is now visible, start auto-mask timer
+    if (_isPinVisible) {
+      _pinAutoMaskTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted) {
+          setState(() {
+            _isPinVisible = false;
+          });
+        }
+      });
+    }
+  }
+
+  /// Check if PIN can be revealed (not hashed)
+  bool _canRevealPin() {
+    // In a real app, this would check if the PIN is stored in plaintext
+    // vs hashed. For now, we assume it can be revealed if _plainPin exists
+    return _plainPin != null && _plainPin!.isNotEmpty;
   }
 
   Widget _buildInfoRow(
@@ -1157,6 +1185,121 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                     : 12.sp,
                 fontWeight: FontWeight.w600,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build specialized PIN row with toggle functionality
+  Widget _buildPinRow(bool isTablet, bool isDesktop, bool isSmallScreen) {
+    final canReveal = _canRevealPin();
+    final displayValue = _isPinVisible && canReveal ? _plainPin! : '••••••';
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: isDesktop
+            ? 16.h
+            : isTablet
+            ? 14.h
+            : isSmallScreen
+            ? 10.h
+            : 12.h,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: isDesktop
+                ? 120.w
+                : isTablet
+                ? 100.w
+                : isSmallScreen
+                ? 80.w
+                : 90.w,
+            child: Text(
+              'PIN',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: isDesktop
+                    ? 14.sp
+                    : isTablet
+                    ? 13.sp
+                    : isSmallScreen
+                    ? 11.sp
+                    : 12.sp,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    displayValue,
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: isDesktop
+                          ? 14.sp
+                          : isTablet
+                          ? 13.sp
+                          : isSmallScreen
+                          ? 11.sp
+                          : 12.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (canReveal) ...[
+                  SizedBox(width: 8.w),
+                  GestureDetector(
+                    onTap: _togglePinVisibility,
+                    child: Container(
+                      padding: EdgeInsets.all(4.w),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(6.r),
+                      ),
+                      child: Icon(
+                        _isPinVisible ? Icons.visibility_off : Icons.visibility,
+                        size: isDesktop
+                            ? 18.sp
+                            : isTablet
+                            ? 16.sp
+                            : isSmallScreen
+                            ? 14.sp
+                            : 15.sp,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  SizedBox(width: 8.w),
+                  Tooltip(
+                    message: 'Cannot reveal hashed PIN',
+                    child: Container(
+                      padding: EdgeInsets.all(4.w),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(6.r),
+                      ),
+                      child: Icon(
+                        Icons.visibility_off,
+                        size: isDesktop
+                            ? 18.sp
+                            : isTablet
+                            ? 16.sp
+                            : isSmallScreen
+                            ? 14.sp
+                            : 15.sp,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],

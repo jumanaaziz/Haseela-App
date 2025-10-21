@@ -130,6 +130,10 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
         .get()
         .then((DocumentSnapshot doc) {
           print('=== DOCUMENT EXISTS: ${doc.exists} ===');
+          print(
+            '📘 CHILD PROFILE DEBUG - ParentID: ${widget.parentId} | ChildID: ${widget.child.id}',
+          );
+
           if (doc.exists) {
             final data = doc.data() as Map<String, dynamic>?;
             print('=== WALLET FOUND ===');

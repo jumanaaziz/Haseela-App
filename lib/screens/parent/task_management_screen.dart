@@ -1466,137 +1466,137 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
 
   Future<void> _approveTask(Task task) async {
     try {
-      // Confirmation dialog
-      bool? confirmed = await showDialog<bool>(
+      // Step 1️⃣ Confirm approval
+      final confirmed = await showDialog<bool>(
         context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green),
-                SizedBox(width: 8.w),
-                Text('Approve Task'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Are you sure you want to approve this task?'),
-                SizedBox(height: 8.h),
-                Text(
-                  'Task: ${task.taskName}',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Allowance: +${task.allowance.toStringAsFixed(0)} ﷼',
-                  style: TextStyle(
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel'),
+        builder: (_) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Approve Task'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Are you sure you want to approve this task?'),
+              SizedBox(height: 8),
+              Text(
+                'Task: ${task.taskName}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+              SizedBox(height: 8),
+              Text(
+                'Allowance: +${task.allowance.toStringAsFixed(0)} ﷼',
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
                 ),
-                child: Text('Approve'),
               ),
             ],
-          );
-        },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Approve'),
+            ),
+          ],
+        ),
       );
 
       if (confirmed != true) return;
 
-      // Show loading dialog
+      // Step 2️⃣ Show loading
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const AlertDialog(
+        builder: (_) => const AlertDialog(
           title: Text('Approving Task...'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               CircularProgressIndicator(),
               SizedBox(height: 16),
-              Text('Updating task status and balance...'),
+              Text('Updating task status and wallet...'),
             ],
           ),
         ),
       );
 
-      // References
+      // Step 3️⃣ Firestore references
       final parentId = FirebaseAuth.instance.currentUser!.uid;
       final childRef = FirebaseFirestore.instance
           .collection('Parents')
           .doc(parentId)
           .collection('Children')
           .doc(widget.childId);
+      print(
+        '🔥 APPROVE DEBUG - ParentID: $parentId | ChildID: ${widget.childId}',
+      );
 
       final taskRef = childRef.collection('Tasks').doc(task.id);
+      final walletDocRef = childRef.collection('Wallet').doc('wallet001');
 
-      // ✅ Step 1: Update the task status
-      await taskRef.update({
-        'status': 'done',
-        'completedDate': FieldValue.serverTimestamp(),
+      // Step 4️⃣ Atomic transaction
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final taskSnap = await tx.get(taskRef);
+        final taskData = taskSnap.data() as Map<String, dynamic>?;
+
+        // avoid double credit if already done
+        if (taskData != null &&
+            (taskData['status']?.toString().toLowerCase() == 'done')) {
+          print('DEBUG: Task already approved, skipping balance update.');
+          return;
+        }
+
+        // ensure wallet exists (merge if already there)
+        tx.set(walletDocRef, {
+          'totalBalance': FieldValue.increment(0),
+          'spendingBalance': 0.0,
+          'savingBalance': 0.0,
+          'savingGoal': 100.0,
+          'userId': widget.childId,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        // increment balance safely
+        tx.update(walletDocRef, {
+          'totalBalance': FieldValue.increment(task.allowance),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // mark task done
+        tx.update(taskRef, {
+          'status': 'done',
+          'completedDate': FieldValue.serverTimestamp(),
+        });
       });
 
-      // ✅ Step 2: Fetch wallet document under the child
-      final walletSnapshot = await childRef.collection('Wallet').limit(1).get();
-
-      if (walletSnapshot.docs.isNotEmpty) {
-        final walletDocRef = walletSnapshot.docs.first.reference;
-
-        // ✅ Step 3: Safely increment totalBalance
-        await FirebaseFirestore.instance.runTransaction((transaction) async {
-          final walletData = await transaction.get(walletDocRef);
-
-          if (walletData.exists) {
-            final currentBalance = (walletData.data()?['totalBalance'] ?? 0)
-                .toDouble();
-            transaction.update(walletDocRef, {
-              'totalBalance': currentBalance + task.allowance,
-            });
-          } else {
-            // if wallet doc somehow doesn’t exist yet
-            transaction.set(walletDocRef, {'totalBalance': task.allowance});
-          }
-        });
-      } else {
-        // ✅ Optional fallback: create wallet doc if none exists
-        final newWalletRef = childRef.collection('Wallet').doc();
-        await newWalletRef.set({'totalBalance': task.allowance});
-      }
-      // Close dialogs
-      Navigator.of(context).pop(); // Close loading dialog
-      Navigator.of(context).pop(); // Close bottom sheet
+      // Step 5️⃣ Close dialogs
+      if (Navigator.canPop(context)) Navigator.pop(context);
+      if (Navigator.canPop(context)) Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Task approved successfully! +${task.allowance.toStringAsFixed(0)} ﷼ added to wallet.',
+            '✅ Task approved! +${task.allowance.toStringAsFixed(0)} ﷼ added to wallet.',
           ),
           backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
         ),
       );
     } catch (e) {
-      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+      if (Navigator.canPop(context)) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error approving task: $e'),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
         ),
       );
     }

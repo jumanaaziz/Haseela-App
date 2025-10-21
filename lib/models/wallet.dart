@@ -70,6 +70,13 @@ class Wallet {
   }
 
   factory Wallet.fromMap(Map<String, dynamic> map) {
+    DateTime _parseDate(dynamic v) {
+      if (v == null) return DateTime.now();
+      if (v is Timestamp) return v.toDate();
+      if (v is String) return DateTime.tryParse(v) ?? DateTime.now();
+      return DateTime.now();
+    }
+
     return Wallet(
       id: map['id'] ?? '',
       userId: map['userId'] ?? '',
@@ -77,12 +84,8 @@ class Wallet {
       spendingBalance: (map['spendingBalance'] ?? 0.0).toDouble(),
       savingBalance: (map['savingBalance'] ?? 0.0).toDouble(),
       savingGoal: (map['savingGoal'] ?? 100.0).toDouble(),
-      createdAt: DateTime.parse(
-        map['createdAt'] ?? DateTime.now().toIso8601String(),
-      ),
-      updatedAt: DateTime.parse(
-        map['updatedAt'] ?? DateTime.now().toIso8601String(),
-      ),
+      createdAt: _parseDate(map['createdAt']),
+      updatedAt: _parseDate(map['updatedAt']),
     );
   }
 

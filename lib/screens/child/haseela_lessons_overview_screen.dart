@@ -30,6 +30,7 @@ class _HaseelaLessonsOverviewScreenState
 
   // Real progress data from Firestore
   int childLevel = 1; // Default level, will be updated from Firestore
+  List<int> completedLessons = []; // List of completed lesson IDs
   final int totalLessons = 5;
 
   List<LessonLevel> get lessons => [
@@ -37,10 +38,10 @@ class _HaseelaLessonsOverviewScreenState
       id: 1,
       title: "What are Riyals?",
       tagline: "Meet Haseel and learn about Saudi money!",
-      icon: "💵",
+      icon: "🐇",
       gradient: [Color(0xFF10B981), Color(0xFF059669)],
       isUnlocked: childLevel >= 1,
-      isCompleted: childLevel > 1,
+      isCompleted: completedLessons.contains(1),
     ),
     LessonLevel(
       id: 2,
@@ -49,7 +50,7 @@ class _HaseelaLessonsOverviewScreenState
       icon: "💼",
       gradient: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
       isUnlocked: childLevel >= 2,
-      isCompleted: childLevel > 2,
+      isCompleted: completedLessons.contains(2),
     ),
     LessonLevel(
       id: 3,
@@ -58,7 +59,7 @@ class _HaseelaLessonsOverviewScreenState
       icon: "🏦",
       gradient: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
       isUnlocked: childLevel >= 3,
-      isCompleted: childLevel > 3,
+      isCompleted: completedLessons.contains(3),
     ),
     LessonLevel(
       id: 4,
@@ -67,7 +68,7 @@ class _HaseelaLessonsOverviewScreenState
       icon: "🤝",
       gradient: [Color(0xFFF59E0B), Color(0xFFD97706)],
       isUnlocked: childLevel >= 4,
-      isCompleted: childLevel > 4,
+      isCompleted: completedLessons.contains(4),
     ),
     LessonLevel(
       id: 5,
@@ -76,7 +77,7 @@ class _HaseelaLessonsOverviewScreenState
       icon: "🧠",
       gradient: [Color(0xFFEC4899), Color(0xFFBE185D)],
       isUnlocked: childLevel >= 5,
-      isCompleted: childLevel > 5,
+      isCompleted: completedLessons.contains(5),
     ),
   ];
 
@@ -105,19 +106,61 @@ class _HaseelaLessonsOverviewScreenState
 
   void _loadChildLevel() async {
     try {
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('Children')
-          .doc(widget.childId)
-          .get();
+      String? parentId = widget.parentId;
 
-      if (doc.exists) {
-        setState(() {
-          childLevel = (doc.data() as Map<String, dynamic>)['level'] ?? 1;
-        });
+      // If parentId is not provided, try to find it
+      if (parentId == null) {
+        // Try to find parent ID from child document in main Children collection
+        DocumentSnapshot childDoc = await FirebaseFirestore.instance
+            .collection('Children')
+            .doc(widget.childId)
+            .get();
+
+        if (childDoc.exists) {
+          Map<String, dynamic> childData =
+              childDoc.data() as Map<String, dynamic>;
+          if (childData['parent'] != null) {
+            DocumentReference parentRef =
+                childData['parent'] as DocumentReference;
+            parentId = parentRef.id;
+          }
+        }
+      }
+
+      if (parentId != null) {
+        // Load from Parents subcollection (primary source)
+        DocumentSnapshot doc = await FirebaseFirestore.instance
+            .collection('Parents')
+            .doc(parentId)
+            .collection('Children')
+            .doc(widget.childId)
+            .get();
+
+        if (doc.exists) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          setState(() {
+            childLevel = data['level'] ?? 1;
+            completedLessons = List<int>.from(data['completedLessons'] ?? []);
+          });
+        }
+      } else {
+        // Fallback: try main Children collection
+        DocumentSnapshot doc = await FirebaseFirestore.instance
+            .collection('Children')
+            .doc(widget.childId)
+            .get();
+
+        if (doc.exists) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          setState(() {
+            childLevel = data['level'] ?? 1;
+            completedLessons = List<int>.from(data['completedLessons'] ?? []);
+          });
+        }
       }
     } catch (e) {
       print('Error loading child level: $e');
-      // Keep default level of 1
+      // Keep default level of 1 and empty completed lessons
     }
   }
 
@@ -238,10 +281,7 @@ class _HaseelaLessonsOverviewScreenState
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () async {
-        await _navigateToChildHome();
-        return false; // Prevent default back behavior
-      },
+      onWillPop: () async => false, // Disable hardware back button
       child: Scaffold(
         body: Container(
           decoration: BoxDecoration(
@@ -320,9 +360,10 @@ class _HaseelaLessonsOverviewScreenState
               borderRadius: BorderRadius.circular(12.r),
             ),
             child: IconButton(
-              onPressed: _navigateToChildHome,
+              onPressed:
+                  _navigateToChildHome, // Navigate to child home instead of back
               icon: Icon(
-                Icons.arrow_back_ios_rounded,
+                Icons.home_rounded, // Change icon to home instead of back arrow
                 color: Colors.white,
                 size: 20.sp,
               ),
@@ -343,7 +384,7 @@ class _HaseelaLessonsOverviewScreenState
                   ),
                 ),
                 Text(
-                  'Master money skills with Haseel! 🐇',
+                  'Master money skills with Haseel! 🦉',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.8),
                     fontSize: 14.sp,
@@ -414,7 +455,7 @@ class _HaseelaLessonsOverviewScreenState
                       ),
                     ),
                     Text(
-                      '${childLevel - 1} of $totalLessons lessons completed',
+                      '${completedLessons.length} of $totalLessons lessons completed',
                       style: TextStyle(
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w500,
@@ -436,7 +477,10 @@ class _HaseelaLessonsOverviewScreenState
             ),
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
-              widthFactor: ((childLevel - 1) / totalLessons).clamp(0.0, 1.0),
+              widthFactor: (completedLessons.length / totalLessons).clamp(
+                0.0,
+                1.0,
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
@@ -449,7 +493,7 @@ class _HaseelaLessonsOverviewScreenState
           ),
           SizedBox(height: 8.h),
           Text(
-            '${(((childLevel - 1) / totalLessons) * 100).toInt()}% Complete',
+            '${((completedLessons.length / totalLessons) * 100).toInt()}% Complete',
             style: TextStyle(
               fontSize: 12.sp,
               fontWeight: FontWeight.w600,

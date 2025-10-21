@@ -24,7 +24,6 @@ class HaseelaService {
         return Child.fromFirestore(doc);
       }
       return null;
-      return Child.fromFirestore(doc); // ✅ This already includes level
     } catch (e) {
       print('Error getting child: $e');
       return null;
@@ -129,12 +128,17 @@ class HaseelaService {
         .collection('Children')
         .doc(childId)
         .collection('Wallet')
+        .doc('wallet001') // 👈 Always fetch this exact wallet
         .snapshots()
         .map((snapshot) {
-          if (snapshot.docs.isNotEmpty) {
-            return Wallet.fromFirestore(snapshot.docs.first, null);
+          if (snapshot.exists && snapshot.data() != null) {
+            return Wallet.fromFirestore(snapshot, null);
+          } else {
+            print(
+              '⚠️ No wallet001 found for child $childId under parent $parentId',
+            );
+            return null;
           }
-          return null;
         });
   }
 

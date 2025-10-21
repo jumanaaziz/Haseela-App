@@ -45,6 +45,8 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
   late AnimationController _haseelController;
   late AnimationController _celebrationController;
   late AnimationController _resetController;
+  late AnimationController _feedbackController;
+  late AnimationController _progressController;
 
   // Game state
   List<DraggableItem> _allItems = [];
@@ -53,6 +55,11 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
   bool _isCompleted = false;
   bool _showCelebration = false;
   Map<String, bool> _zoneHighlights = {};
+
+  // Enhanced game state
+  int _score = 0;
+  Map<String, bool> _itemCorrectness = {}; // Track correctness of each item
+  Map<String, int> _itemAttempts = {}; // Track attempts per item
 
   @override
   void initState() {
@@ -123,6 +130,14 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
+    _feedbackController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _progressController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
   }
 
   @override
@@ -130,11 +145,16 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
     _haseelController.dispose();
     _celebrationController.dispose();
     _resetController.dispose();
+    _feedbackController.dispose();
+    _progressController.dispose();
     super.dispose();
   }
 
   void _onItemDropped(DraggableItem item, ItemType targetType) {
     setState(() {
+      // Track attempts
+      _itemAttempts[item.id] = (_itemAttempts[item.id] ?? 0) + 1;
+
       // Remove from both lists first
       _saveItems.removeWhere((i) => i.id == item.id);
       _spendItems.removeWhere((i) => i.id == item.id);
@@ -149,11 +169,31 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
       // Check if correct
       bool isCorrect = item.correctType == targetType;
 
+      // Update scoring
+      if (isCorrect) {
+        _score += 10; // Award points for correct answers
+        _itemCorrectness[item.id] = true;
+      } else {
+        _itemCorrectness[item.id] = false;
+        // Allow retry by removing from the list after showing feedback
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              if (targetType == ItemType.save) {
+                _saveItems.removeWhere((i) => i.id == item.id);
+              } else {
+                _spendItems.removeWhere((i) => i.id == item.id);
+              }
+            });
+          }
+        });
+      }
+
       // Highlight zone
       _zoneHighlights[targetType.name] = true;
 
-      // Show feedback
-      _showFeedback(item, isCorrect);
+      // Show enhanced feedback
+      _showEnhancedFeedback(item, isCorrect);
 
       // Check completion
       _checkCompletion();
@@ -169,62 +209,153 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
     });
   }
 
-  void _showFeedback(DraggableItem item, bool isCorrect) {
+  void _showEnhancedFeedback(DraggableItem item, bool isCorrect) {
+    _feedbackController.forward();
+
+    // Show snackbar with enhanced styling
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Text('🐇'),
+            AnimatedBuilder(
+              animation: _feedbackController,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: 1.0 + (_feedbackController.value * 0.2),
+                  child: Text(isCorrect ? '✅' : '❌'),
+                );
+              },
+            ),
             SizedBox(width: 8.w),
             Expanded(
               child: Text(
-                isCorrect
-                    ? item.feedback
-                    : 'Hmm, maybe that belongs in the \'${item.correctType == ItemType.save ? 'Save' : 'Spend'}\' zone. Try again 🧐.',
+                isCorrect ? item.feedback : _getRetryMessage(item),
+                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
               ),
             ),
+            if (isCorrect) ...[
+              SizedBox(width: 8.w),
+              Text(
+                '+10',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ],
         ),
         backgroundColor: isCorrect
             ? const Color(0xFF10B981)
             : const Color(0xFFEF4444),
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+        duration: Duration(seconds: isCorrect ? 3 : 2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        margin: EdgeInsets.all(16.w),
       ),
     );
+
+    // Hide feedback after delay
+    Future.delayed(Duration(seconds: isCorrect ? 3 : 2), () {
+      if (mounted) {
+        _feedbackController.reset();
+      }
+    });
+  }
+
+  String _getRetryMessage(DraggableItem item) {
+    String correctZone = item.correctType == ItemType.save ? 'Save' : 'Spend';
+    return 'Try again! That belongs in the "$correctZone" zone. Think about whether it\'s a need or want! 🤔';
   }
 
   void _checkCompletion() {
-    bool allCorrect = true;
+    int correctlyPlacedItems = 0;
 
     // Check save items
     for (var item in _saveItems) {
-      if (item.correctType != ItemType.save) {
-        allCorrect = false;
-        break;
+      if (item.correctType == ItemType.save) {
+        correctlyPlacedItems++;
       }
     }
 
     // Check spend items
     for (var item in _spendItems) {
-      if (item.correctType != ItemType.spend) {
-        allCorrect = false;
-        break;
+      if (item.correctType == ItemType.spend) {
+        correctlyPlacedItems++;
       }
     }
 
-    // Check if all items are placed
-    if (allCorrect &&
-        _saveItems.length + _spendItems.length == _allItems.length) {
+    // Check if all items are placed and minimum correct answers achieved
+    bool allItemsPlaced =
+        _saveItems.length + _spendItems.length == _allItems.length;
+    bool minimumCorrect =
+        correctlyPlacedItems >= 4; // Require at least 4 out of 6 correct
+
+    if (allItemsPlaced && minimumCorrect) {
       setState(() {
         _isCompleted = true;
         _showCelebration = true;
       });
       _celebrationController.forward();
+      _progressController.forward();
 
-      Future.delayed(const Duration(seconds: 3), () {
+      // Show completion message with score
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Text('🎉'),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'Level Completed! You got $correctlyPlacedItems out of ${_allItems.length} correct! Score: $_score',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.r),
+          ),
+        ),
+      );
+
+      Future.delayed(const Duration(seconds: 4), () {
         widget.onComplete();
       });
+    } else if (allItemsPlaced && !minimumCorrect) {
+      // Show message to try again
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Text('🔄'),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'You got $correctlyPlacedItems out of ${_allItems.length} correct. Try again to get at least 4 correct!',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFFF59E0B),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -236,16 +367,21 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
         _isCompleted = false;
         _showCelebration = false;
         _zoneHighlights.clear();
+        // Reset enhanced game state
+        _score = 0;
+        _itemCorrectness.clear();
+        _itemAttempts.clear();
       });
       _resetController.reverse();
+      _progressController.reset();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              Text('🐇'),
+              Text('🔄'),
               SizedBox(width: 8.w),
-              Text('All items reset! Let\'s give it another try 🐇.'),
+              Text('Game reset! Try again!'),
             ],
           ),
           backgroundColor: const Color(0xFF8B5CF6),
@@ -293,6 +429,8 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
                         _buildProgressTracker(),
                         SizedBox(height: isTablet ? 32.h : 24.h),
                         _buildTitle(),
+                        SizedBox(height: isTablet ? 32.h : 24.h),
+                        _buildScoreAndProgress(),
                         SizedBox(height: isTablet ? 32.h : 24.h),
                         _buildHaseelSection(),
                         SizedBox(height: isTablet ? 40.h : 32.h),
@@ -419,6 +557,119 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
     );
   }
 
+  Widget _buildScoreAndProgress() {
+    int correctlyPlacedItems = 0;
+    for (var item in _saveItems) {
+      if (item.correctType == ItemType.save) correctlyPlacedItems++;
+    }
+    for (var item in _spendItems) {
+      if (item.correctType == ItemType.spend) correctlyPlacedItems++;
+    }
+
+    double progress = correctlyPlacedItems / _allItems.length;
+
+    return Container(
+      padding: EdgeInsets.all(20.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Score',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  Text(
+                    '$_score',
+                    style: TextStyle(
+                      fontSize: 24.sp,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF8B5CF6),
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Progress',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  Text(
+                    '$correctlyPlacedItems/${_allItems.length}',
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF10B981),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(height: 16.h),
+          // Progress bar
+          Container(
+            height: 8.h,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(4.r),
+            ),
+            child: AnimatedBuilder(
+              animation: _progressController,
+              builder: (context, child) {
+                return FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: progress,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      ),
+                      borderRadius: BorderRadius.circular(4.r),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            'Need at least 4 correct to complete!',
+            style: TextStyle(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHaseelSection() {
     return Container(
       width: double.infinity,
@@ -436,6 +687,22 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
       ),
       child: Column(
         children: [
+          Container(
+            width: 120.w,
+            height: 120.w,
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B5CF6),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Text('🐇', style: TextStyle(fontSize: 60.sp)),
+          ),
           SizedBox(height: 16.h),
           Container(
             padding: EdgeInsets.all(16.w),
@@ -577,7 +844,7 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
         children: [
           Expanded(
             child: _buildDropZone(
-              'Save',
+              'Save For Later',
               '💼',
               ItemType.save,
               _saveItems,
@@ -588,7 +855,7 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
           SizedBox(width: 16.w),
           Expanded(
             child: _buildDropZone(
-              'Spend',
+              'Spend Now',
               '🛍️',
               ItemType.spend,
               _spendItems,
@@ -615,6 +882,9 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
       onWillAccept: (data) => true,
       onAccept: (data) => _onItemDropped(data, type),
       builder: (context, candidateData, rejectedData) {
+        final hasRejectedData = rejectedData.isNotEmpty;
+        final hasCandidateData = candidateData.isNotEmpty;
+
         return AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           constraints: BoxConstraints(
@@ -624,18 +894,32 @@ class _Lesson3MiniChallengeScreenState extends State<Lesson3MiniChallengeScreen>
           decoration: BoxDecoration(
             color: isHighlighted
                 ? (type == ItemType.save ? Colors.green[50] : Colors.red[50])
+                : hasRejectedData
+                ? Colors.red[50]
+                : hasCandidateData
+                ? Colors.blue[50]
                 : Colors.white,
             borderRadius: BorderRadius.circular(16.r),
             border: Border.all(
               color: isHighlighted
                   ? (type == ItemType.save ? Colors.green : Colors.red)
+                  : hasRejectedData
+                  ? Colors.red
+                  : hasCandidateData
+                  ? Colors.blue
                   : const Color(0xFFE2E8F0),
-              width: isHighlighted ? 3 : 2,
+              width: isHighlighted || hasRejectedData || hasCandidateData
+                  ? 3
+                  : 2,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
+                color: (isHighlighted || hasRejectedData || hasCandidateData
+                    ? Colors.black.withOpacity(0.2)
+                    : Colors.black.withOpacity(0.1)),
+                blurRadius: isHighlighted || hasRejectedData || hasCandidateData
+                    ? 15
+                    : 10,
                 offset: const Offset(0, 4),
               ),
             ],

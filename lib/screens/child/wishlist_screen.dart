@@ -24,7 +24,8 @@ class WishlistScreen extends StatefulWidget {
   State<WishlistScreen> createState() => _WishlistScreenState();
 }
 
-class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStateMixin {
+class _WishlistScreenState extends State<WishlistScreen>
+    with TickerProviderStateMixin {
   int _navBarIndex = 2; // Wishlist tab index
   AnimationController? _sparkleController;
   double currentBalance = 0.0;
@@ -48,23 +49,29 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
   }
 
   void _loadBalance() {
-    print('🔍 WishlistScreen: Loading wallet balance for parentId: ${widget.parentId}, childId: ${widget.childId}');
-    _walletSubscription = HaseelaService().getWalletForChild(widget.parentId, widget.childId).listen(
-      (wallet) {
-        print('🔍 WishlistScreen: Wallet data received');
-        if (mounted && wallet != null) {
-          print('🔍 WishlistScreen: Spending balance: ${wallet.spendingBalance}');
-          setState(() {
-            currentBalance = wallet.spendingBalance;
-          });
-        } else {
-          print('⚠️ WishlistScreen: Wallet is null or widget not mounted');
-        }
-      },
-      onError: (error) {
-        print('❌ WishlistScreen: Error loading wallet: $error');
-      },
+    print(
+      '🔍 WishlistScreen: Loading wallet balance for parentId: ${widget.parentId}, childId: ${widget.childId}',
     );
+    _walletSubscription = HaseelaService()
+        .getWalletForChild(widget.parentId, widget.childId)
+        .listen(
+          (wallet) {
+            print('🔍 WishlistScreen: Wallet data received');
+            if (mounted && wallet != null) {
+              print(
+                '🔍 WishlistScreen: Spending balance: ${wallet.spendingBalance}',
+              );
+              setState(() {
+                currentBalance = wallet.spendingBalance;
+              });
+            } else {
+              print('⚠️ WishlistScreen: Wallet is null or widget not mounted');
+            }
+          },
+          onError: (error) {
+            print('❌ WishlistScreen: Error loading wallet: $error');
+          },
+        );
   }
 
   @override
@@ -87,26 +94,27 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
         actions: [],
       ),
       body: StreamBuilder<Wallet?>(
-        stream: HaseelaService().getWalletForChild(widget.parentId, widget.childId),
+        stream: HaseelaService().getWalletForChild(
+          widget.parentId,
+          widget.childId,
+        ),
         builder: (context, walletSnapshot) {
           // Get the current balance from the wallet snapshot
-          final wallet = walletSnapshot.hasData && walletSnapshot.data != null ? walletSnapshot.data! : null;
-          final walletBalance = wallet != null 
-              ? (wallet.spendingBalance > 0 ? wallet.spendingBalance : wallet.totalBalance)
-              : 0.0;
-          
+          final wallet = walletSnapshot.hasData && walletSnapshot.data != null
+              ? walletSnapshot.data!
+              : null;
+          final walletBalance = wallet?.spendingBalance ?? 0.0;
+
           return Column(
             children: [
               // Total Value Card
               _buildTotalValueCard(walletBalance),
-              
+
               // Add Item Button
               _buildAddItemButton(),
-              
+
               // Wishlist Items
-              Expanded(
-                child: _buildWishlistItems(walletBalance),
-              ),
+              Expanded(child: _buildWishlistItems(walletBalance)),
             ],
           );
         },
@@ -174,10 +182,7 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(16.r),
                   ),
-                  child: Text(
-                    '💝',
-                    style: TextStyle(fontSize: 32.sp),
-                  ),
+                  child: Text('💝', style: TextStyle(fontSize: 32.sp)),
                 ),
                 SizedBox(width: 16.w),
                 Expanded(
@@ -195,7 +200,10 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                       ),
                       SizedBox(height: 4.h),
                       StreamBuilder<List<WishlistItem>>(
-                        stream: WishlistService.getWishlistItems(widget.parentId, widget.childId),
+                        stream: WishlistService.getWishlistItems(
+                          widget.parentId,
+                          widget.childId,
+                        ),
                         builder: (context, snapshot) {
                           if (snapshot.hasData) {
                             double total = 0.0;
@@ -317,7 +325,9 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(
             child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF643FDB)),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                const Color(0xFF643FDB),
+              ),
             ),
           );
         }
@@ -407,10 +417,7 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                     ),
                     shape: BoxShape.circle,
                   ),
-                  child: Text(
-                    '✨',
-                    style: TextStyle(fontSize: 80.sp),
-                  ),
+                  child: Text('✨', style: TextStyle(fontSize: 80.sp)),
                 ),
                 SizedBox(height: 24.h),
                 Text(
@@ -441,7 +448,10 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [const Color(0xFF643FDB), const Color(0xFF8B5CF6)],
+                      colors: [
+                        const Color(0xFF643FDB),
+                        const Color(0xFF8B5CF6),
+                      ],
                     ),
                     borderRadius: BorderRadius.circular(30.r),
                     boxShadow: [
@@ -458,7 +468,10 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                       backgroundColor: Colors.transparent,
                       foregroundColor: Colors.white,
                       shadowColor: Colors.transparent,
-                      padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 16.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 32.w,
+                        vertical: 16.h,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30.r),
                       ),
@@ -482,10 +495,10 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
         return ListView.builder(
           padding: EdgeInsets.symmetric(horizontal: 20.w),
           itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return _buildWishlistItemCard(item, balance);
-            },
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return _buildWishlistItemCard(item, balance);
+          },
         );
       },
     );
@@ -503,14 +516,16 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
       [const Color(0xFFf093fb), const Color(0xFFf5576c)],
       [const Color(0xFF4facfe), const Color(0xFF00f2fe)],
     ];
-    
+
     final colorIndex = item.name.length % gradients.length;
     final itemGradient = gradients[colorIndex];
-    
+
     // Calculate progress based on spending wallet balance
-    final progress = balance >= item.price ? 1.0 : (balance / item.price).clamp(0.0, 1.0);
+    final progress = balance >= item.price
+        ? 1.0
+        : (balance / item.price).clamp(0.0, 1.0);
     final canAfford = balance >= item.price;
-    
+
     return Container(
       margin: EdgeInsets.only(bottom: 20.h),
       decoration: BoxDecoration(
@@ -542,54 +557,58 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
               children: [
                 // Fun animated icon bubble
                 _sparkleController != null
-                  ? AnimatedBuilder(
-                      animation: _sparkleController!,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: canAfford ? 1.0 + (0.1 * (1 + _sparkleController!.value * 0.3)) : 1.0,
-                          child: Container(
-                            padding: EdgeInsets.all(14.w),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: itemGradient,
+                    ? AnimatedBuilder(
+                        animation: _sparkleController!,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: canAfford
+                                ? 1.0 +
+                                      (0.1 *
+                                          (1 + _sparkleController!.value * 0.3))
+                                : 1.0,
+                            child: Container(
+                              padding: EdgeInsets.all(14.w),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(colors: itemGradient),
+                                borderRadius: BorderRadius.circular(18.r),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: itemGradient[0].withOpacity(
+                                      canAfford ? 0.5 : 0.3,
+                                    ),
+                                    blurRadius: 12.r,
+                                    offset: Offset(0, 4.h),
+                                  ),
+                                ],
                               ),
-                              borderRadius: BorderRadius.circular(18.r),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: itemGradient[0].withOpacity(canAfford ? 0.5 : 0.3),
-                                  blurRadius: 12.r,
-                                  offset: Offset(0, 4.h),
-                                ),
-                              ],
+                              child: Text(
+                                _getItemEmoji(item.name),
+                                style: TextStyle(fontSize: 28.sp),
+                              ),
                             ),
-                            child: Text(
-                              _getItemEmoji(item.name),
-                              style: TextStyle(fontSize: 28.sp),
+                          );
+                        },
+                      )
+                    : Container(
+                        padding: EdgeInsets.all(14.w),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: itemGradient),
+                          borderRadius: BorderRadius.circular(18.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: itemGradient[0].withOpacity(
+                                canAfford ? 0.5 : 0.3,
+                              ),
+                              blurRadius: 12.r,
+                              offset: Offset(0, 4.h),
                             ),
-                          ),
-                        );
-                      },
-                    )
-                  : Container(
-                      padding: EdgeInsets.all(14.w),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: itemGradient,
+                          ],
                         ),
-                        borderRadius: BorderRadius.circular(18.r),
-                        boxShadow: [
-                          BoxShadow(
-                            color: itemGradient[0].withOpacity(canAfford ? 0.5 : 0.3),
-                            blurRadius: 12.r,
-                            offset: Offset(0, 4.h),
-                          ),
-                        ],
+                        child: Text(
+                          _getItemEmoji(item.name),
+                          style: TextStyle(fontSize: 28.sp),
+                        ),
                       ),
-                      child: Text(
-                        _getItemEmoji(item.name),
-                        style: TextStyle(fontSize: 28.sp),
-                      ),
-                    ),
                 SizedBox(width: 14.w),
                 // Item details
                 Expanded(
@@ -611,20 +630,23 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                           ),
                           if (canAfford) ...[
                             Container(
-                              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 10.w,
+                                vertical: 4.h,
+                              ),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  colors: [const Color(0xFF47C272), const Color(0xFF34A853)],
+                                  colors: [
+                                    const Color(0xFF47C272),
+                                    const Color(0xFF34A853),
+                                  ],
                                 ),
                                 borderRadius: BorderRadius.circular(12.r),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-                                    '🎉',
-                                    style: TextStyle(fontSize: 12.sp),
-                                  ),
+                                  Text('🎉', style: TextStyle(fontSize: 12.sp)),
                                   SizedBox(width: 4.w),
                                   Text(
                                     'Can Buy!',
@@ -659,9 +681,9 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                 ),
               ],
             ),
-            
+
             SizedBox(height: 18.h),
-            
+
             // Progress bar with fun design
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -709,9 +731,7 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                           height: 10.h,
                           width: constraints.maxWidth * progress,
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: itemGradient,
-                            ),
+                            gradient: LinearGradient(colors: itemGradient),
                             borderRadius: BorderRadius.circular(10.r),
                             boxShadow: [
                               BoxShadow(
@@ -758,18 +778,19 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                 ),
               ],
             ),
-            
+
             SizedBox(height: 16.h),
-            
+
             // Bottom row with price and actions
             Row(
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 10.h,
+                  ),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: itemGradient,
-                    ),
+                    gradient: LinearGradient(colors: itemGradient),
                     borderRadius: BorderRadius.circular(20.r),
                     boxShadow: [
                       BoxShadow(
@@ -783,22 +804,20 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _sparkleController != null
-                        ? AnimatedBuilder(
-                            animation: _sparkleController!,
-                            builder: (context, child) {
-                              return Transform.rotate(
-                                angle: _sparkleController!.value * 2 * 3.14159,
-                                child: Text(
-                                  '✨',
-                                  style: TextStyle(fontSize: 14.sp),
-                                ),
-                              );
-                            },
-                          )
-                        : Text(
-                            '✨',
-                            style: TextStyle(fontSize: 14.sp),
-                          ),
+                          ? AnimatedBuilder(
+                              animation: _sparkleController!,
+                              builder: (context, child) {
+                                return Transform.rotate(
+                                  angle:
+                                      _sparkleController!.value * 2 * 3.14159,
+                                  child: Text(
+                                    '✨',
+                                    style: TextStyle(fontSize: 14.sp),
+                                  ),
+                                );
+                              },
+                            )
+                          : Text('✨', style: TextStyle(fontSize: 14.sp)),
                       SizedBox(width: 6.w),
                       Text(
                         "${item.price.toStringAsFixed(2)} SAR",
@@ -857,63 +876,105 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
       ),
     );
   }
-  
+
   String _getItemEmoji(String itemName) {
     final name = itemName.toLowerCase();
     // Tech & Electronics
-    if (name.contains('game') || name.contains('play') || name.contains('console') || name.contains('nintendo') || name.contains('xbox')) return '🎮';
-    if (name.contains('phone') || name.contains('iphone') || name.contains('mobile')) return '📱';
-    if (name.contains('laptop') || name.contains('computer') || name.contains('pc')) return '💻';
+    if (name.contains('game') ||
+        name.contains('play') ||
+        name.contains('console') ||
+        name.contains('nintendo') ||
+        name.contains('xbox'))
+      return '🎮';
+    if (name.contains('phone') ||
+        name.contains('iphone') ||
+        name.contains('mobile'))
+      return '📱';
+    if (name.contains('laptop') ||
+        name.contains('computer') ||
+        name.contains('pc'))
+      return '💻';
     if (name.contains('tablet') || name.contains('ipad')) return '📱';
     if (name.contains('camera')) return '📷';
-    if (name.contains('music') || name.contains('headphone') || name.contains('earphone') || name.contains('airpod')) return '🎧';
+    if (name.contains('music') ||
+        name.contains('headphone') ||
+        name.contains('earphone') ||
+        name.contains('airpod'))
+      return '🎧';
     if (name.contains('watch') || name.contains('smartwatch')) return '⌚';
     if (name.contains('drone')) return '🛸';
     if (name.contains('robot')) return '🤖';
-    
+
     // Sports & Outdoors
-    if (name.contains('bike') || name.contains('cycle') || name.contains('bicycle')) return '🚲';
-    if (name.contains('ball') || name.contains('football') || name.contains('soccer')) return '⚽';
+    if (name.contains('bike') ||
+        name.contains('cycle') ||
+        name.contains('bicycle'))
+      return '🚲';
+    if (name.contains('ball') ||
+        name.contains('football') ||
+        name.contains('soccer'))
+      return '⚽';
     if (name.contains('basketball')) return '🏀';
     if (name.contains('skate')) return '🛹';
     if (name.contains('swim') || name.contains('pool')) return '🏊';
     if (name.contains('tennis')) return '🎾';
-    
+
     // Creative & Learning
     if (name.contains('book')) return '📚';
-    if (name.contains('art') || name.contains('paint') || name.contains('draw')) return '🎨';
-    if (name.contains('music') || name.contains('guitar') || name.contains('piano')) return '🎵';
+    if (name.contains('art') || name.contains('paint') || name.contains('draw'))
+      return '🎨';
+    if (name.contains('music') ||
+        name.contains('guitar') ||
+        name.contains('piano'))
+      return '🎵';
     if (name.contains('lego') || name.contains('block')) return '🧱';
     if (name.contains('puzzle')) return '🧩';
-    
+
     // Fashion & Accessories
-    if (name.contains('shoe') || name.contains('sneaker') || name.contains('boot')) return '👟';
-    if (name.contains('cloth') || name.contains('shirt') || name.contains('dress') || name.contains('hoodie')) return '👕';
+    if (name.contains('shoe') ||
+        name.contains('sneaker') ||
+        name.contains('boot'))
+      return '👟';
+    if (name.contains('cloth') ||
+        name.contains('shirt') ||
+        name.contains('dress') ||
+        name.contains('hoodie'))
+      return '👕';
     if (name.contains('bag') || name.contains('backpack')) return '🎒';
     if (name.contains('hat') || name.contains('cap')) return '🧢';
     if (name.contains('glass') || name.contains('sunglass')) return '🕶️';
-    
+
     // Toys & Fun
     if (name.contains('toy')) return '🧸';
     if (name.contains('doll')) return '🪆';
     if (name.contains('car') && !name.contains('card')) return '🚗';
     if (name.contains('train')) return '🚂';
     if (name.contains('plane')) return '✈️';
-    
+
     // Animals & Pets
-    if (name.contains('pet') || name.contains('dog') || name.contains('cat') || name.contains('animal')) return '🐾';
-    
+    if (name.contains('pet') ||
+        name.contains('dog') ||
+        name.contains('cat') ||
+        name.contains('animal'))
+      return '🐾';
+
     // Food & Treats
     if (name.contains('candy') || name.contains('sweet')) return '🍬';
     if (name.contains('ice cream')) return '🍦';
     if (name.contains('pizza')) return '🍕';
-    
+
     // Special
-    if (name.contains('star') || name.contains('dream') || name.contains('wish')) return '⭐';
+    if (name.contains('star') ||
+        name.contains('dream') ||
+        name.contains('wish'))
+      return '⭐';
     if (name.contains('rocket') || name.contains('space')) return '🚀';
     if (name.contains('magic') || name.contains('sparkle')) return '✨';
-    if (name.contains('trophy') || name.contains('prize') || name.contains('reward')) return '🏆';
-    
+    if (name.contains('trophy') ||
+        name.contains('prize') ||
+        name.contains('reward'))
+      return '🏆';
+
     return '🎁'; // Default gift emoji
   }
 
@@ -938,10 +999,7 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                 ),
                 borderRadius: BorderRadius.circular(12.r),
               ),
-              child: Text(
-                '✨',
-                style: TextStyle(fontSize: 24.sp),
-              ),
+              child: Text('✨', style: TextStyle(fontSize: 24.sp)),
             ),
             SizedBox(width: 12.w),
             Expanded(
@@ -1028,7 +1086,8 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
             ),
             child: ElevatedButton(
               onPressed: () async {
-                if (nameController.text.isNotEmpty && priceController.text.isNotEmpty) {
+                if (nameController.text.isNotEmpty &&
+                    priceController.text.isNotEmpty) {
                   try {
                     final price = double.parse(priceController.text);
                     await WishlistService.addWishlistItem(
@@ -1044,7 +1103,9 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
                         content: Row(
                           children: [
                             Text('🎉  '),
-                            Expanded(child: Text('Item added to your wishlist!')),
+                            Expanded(
+                              child: Text('Item added to your wishlist!'),
+                            ),
                           ],
                         ),
                         backgroundColor: const Color(0xFF47C272),
@@ -1174,7 +1235,8 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
           ),
           ElevatedButton(
             onPressed: () async {
-              if (nameController.text.isNotEmpty && priceController.text.isNotEmpty) {
+              if (nameController.text.isNotEmpty &&
+                  priceController.text.isNotEmpty) {
                 try {
                   final price = double.parse(priceController.text);
                   await WishlistService.updateWishlistItem(
@@ -1233,10 +1295,7 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
         ),
         content: Text(
           "Are you sure you want to delete '${item.name}' from your wishlist?",
-          style: TextStyle(
-            fontSize: 14.sp,
-            fontFamily: 'SF Pro Text',
-          ),
+          style: TextStyle(fontSize: 14.sp, fontFamily: 'SF Pro Text'),
         ),
         actions: [
           TextButton(
@@ -1301,10 +1360,8 @@ class _WishlistScreenState extends State<WishlistScreen> with TickerProviderStat
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => HomeScreen(
-              parentId: widget.parentId,
-              childId: widget.childId,
-            ),
+            builder: (_) =>
+                HomeScreen(parentId: widget.parentId, childId: widget.childId),
           ),
         );
         break;

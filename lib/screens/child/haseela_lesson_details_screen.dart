@@ -37,6 +37,10 @@ class _HaseelaLessonDetailsScreenState extends State<HaseelaLessonDetailsScreen>
   bool isLessonCompleted = false;
   bool showCelebration = false;
 
+  // Variables for level progression tracking
+  int _newLevel = 1;
+  bool _levelIncreased = false;
+
   @override
   void initState() {
     super.initState();
@@ -141,47 +145,136 @@ class _HaseelaLessonDetailsScreenState extends State<HaseelaLessonDetailsScreen>
 
   void _updateChildLevelAndReturnToOverview() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('Children')
-          .doc(widget.childId)
-          .update({'level': FieldValue.increment(1)});
+      // Use Firestore transaction to ensure atomic updates
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        // Get parent ID from widget or find it
+        String? parentId = widget.parentId;
+        if (parentId == null) {
+          // Try to find parent ID from child document
+          DocumentSnapshot childDoc = await FirebaseFirestore.instance
+              .collection('Children')
+              .doc(widget.childId)
+              .get();
 
-      // Show celebration
+          if (childDoc.exists) {
+            Map<String, dynamic> childData =
+                childDoc.data() as Map<String, dynamic>;
+            if (childData['parent'] != null) {
+              DocumentReference parentRef =
+                  childData['parent'] as DocumentReference;
+              parentId = parentRef.id;
+            }
+          }
+        }
+
+        if (parentId == null) {
+          throw Exception('Parent ID not found');
+        }
+
+        // Get current child data from Parents subcollection
+        DocumentReference childRef = FirebaseFirestore.instance
+            .collection('Parents')
+            .doc(parentId)
+            .collection('Children')
+            .doc(widget.childId);
+
+        DocumentSnapshot childDoc = await transaction.get(childRef);
+
+        if (!childDoc.exists) {
+          throw Exception('Child document not found in parent subcollection');
+        }
+
+        Map<String, dynamic> childData =
+            childDoc.data() as Map<String, dynamic>;
+        int currentLevel = childData['level'] ?? 1;
+        List<dynamic> completedLessons = childData['completedLessons'] ?? [];
+        List<int> completedLessonsList = completedLessons.cast<int>();
+
+        // Check if this lesson was already completed
+        if (completedLessonsList.contains(widget.lesson.id)) {
+          print('Lesson ${widget.lesson.id} already completed');
+          throw Exception('ALREADY_COMPLETED');
+        }
+
+        // Add this lesson to completed lessons
+        completedLessonsList.add(widget.lesson.id);
+
+        // Calculate new level (only increment if not already at max level)
+        int newLevel = currentLevel;
+        if (currentLevel < 5) {
+          newLevel = currentLevel + 1;
+        }
+
+        // Update child data in Parents subcollection using transaction
+        transaction.update(childRef, {
+          'level': newLevel,
+          'completedLessons': completedLessonsList,
+          'lastCompletedLesson': widget.lesson.id,
+          'lastCompletionTime': FieldValue.serverTimestamp(),
+        });
+
+        // Store the new level for use after transaction
+        _newLevel = newLevel;
+        _levelIncreased = newLevel > currentLevel;
+      });
+
+      // Show appropriate celebration message
+      String celebrationMessage;
+      if (_levelIncreased) {
+        celebrationMessage = '🎉 Amazing! Level $_newLevel unlocked! 🎉';
+      } else {
+        celebrationMessage = '🎉 Great job! Lesson completed! 🎉';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🎉 Great job! Next lesson unlocked! 🎉'),
+          content: Text(celebrationMessage),
           backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Always navigate back to overview after completion
+      _navigateBackToOverview();
+    } catch (e) {
+      if (e.toString().contains('ALREADY_COMPLETED')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('🎉 Lesson completed! You can replay anytime! 🎉'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        _navigateBackToOverview();
+        return;
+      }
+
+      print('Error updating child level: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Lesson completed! (Some data may not have been saved)',
+          ),
+          backgroundColor: Colors.orange,
           duration: Duration(seconds: 2),
         ),
       );
-
-      // Navigate directly back to lessons overview (bypassing lesson details)
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => HaseelaLessonsOverviewScreen(
-            childName: widget.childName,
-            childId: widget.childId,
-            parentId: widget.parentId, // Pass parentId
-          ),
-        ),
-        (route) => false, // Remove all previous routes
-      );
-    } catch (e) {
-      print('Error updating child level: $e');
-      // Still navigate back even if update fails
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => HaseelaLessonsOverviewScreen(
-            childName: widget.childName,
-            childId: widget.childId,
-            parentId: widget.parentId, // Pass parentId
-          ),
-        ),
-        (route) => false, // Remove all previous routes
-      );
+      _navigateBackToOverview();
     }
+  }
+
+  void _navigateBackToOverview() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HaseelaLessonsOverviewScreen(
+          childName: widget.childName,
+          childId: widget.childId,
+          parentId: widget.parentId,
+        ),
+      ),
+      (route) => false, // Remove all previous routes
+    );
   }
 
   @override
@@ -293,7 +386,7 @@ class _HaseelaLessonDetailsScreenState extends State<HaseelaLessonDetailsScreen>
                   ),
                 ),
                 Text(
-                  'Learn with Haseel! 🐇',
+                  'Learn with Haseel! 🦉',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.8),
                     fontSize: 14.sp,
@@ -424,7 +517,7 @@ class _HaseelaLessonDetailsScreenState extends State<HaseelaLessonDetailsScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('🐇', style: TextStyle(fontSize: 60.sp)),
+                Text('🦉', style: TextStyle(fontSize: 60.sp)),
                 SizedBox(height: 8.h),
                 Text(
                   'Haseel',

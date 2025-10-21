@@ -1624,6 +1624,16 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         imageUrl,
       );
 
+      // ✅ Add completedDate
+      await FirebaseFirestore.instance
+          .collection('Parents')
+          .doc(_currentParentId)
+          .collection('Children')
+          .doc(_currentChildId)
+          .collection('Tasks')
+          .doc(task.id)
+          .update({'completedDate': FieldValue.serverTimestamp()});
+
       // Close loading dialog
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
@@ -1771,6 +1781,15 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
           task.id,
           'pending',
         );
+        // ✅ Add completedDate timestamp when task is submitted
+        await FirebaseFirestore.instance
+            .collection('Parents')
+            .doc(_currentParentId)
+            .collection('Children')
+            .doc(_currentChildId)
+            .collection('Tasks')
+            .doc(task.id)
+            .update({'completedDate': FieldValue.serverTimestamp()});
 
         // Close loading dialog
         if (Navigator.of(context).canPop()) {

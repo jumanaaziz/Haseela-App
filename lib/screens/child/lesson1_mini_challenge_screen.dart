@@ -382,7 +382,7 @@ class _Lesson1MiniChallengeScreenState extends State<Lesson1MiniChallengeScreen>
           ),
           SizedBox(height: 20.h),
           Text(
-            'Tap at least 3 things you could buy with one coin:',
+            'Tap at least 3 things you could buy with one riyal:',
             style: TextStyle(
               fontSize: 16.sp,
               fontWeight: FontWeight.w500,

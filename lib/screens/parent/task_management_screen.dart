@@ -127,12 +127,36 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     }
   }
 
+  /// ✅ Show edit task bottom sheet
+  void _showEditTaskBottomSheet(Task task) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditTaskBottomSheet(task: task),
+    );
+  }
+
+  /// ✅ Show task details bottom sheet
+  _showTaskDetailsBottomSheet(Task task) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => TaskDetailsBottomSheet(
+        task: task,
+        childId: selectedUserId, // ✅ pass it here
+      ),
+    );
+  }
+
   /// ✅ Group tasks by status in the specified order
   Map<String, List<Task>> _groupTasksByStatus(List<Task> tasks) {
     final Map<String, List<Task>> grouped = {
       'Waiting Approval': [],
       'To-Do': [],
       'Completed': [],
+      'Rejected': [],
     };
 
     for (final task in tasks) {
@@ -153,24 +177,21 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     }
 
     return grouped;
-
-    return grouped;
   }
 
-  /// ✅ Get total count of items including headers (always show all groups)
+  /// ✅ Get total count of items including headers
   int _getTotalGroupedItemCount(Map<String, List<Task>> groupedTasks) {
     int count = 0;
     for (final entry in groupedTasks.entries) {
-      count += 1; // Header (always included)
-      count += entry.value.length; // Tasks
-      if (entry.value.isEmpty) {
-        count += 1; // Empty placeholder text
+      if (entry.value.isNotEmpty) {
+        count += 1; // Header
+        count += entry.value.length; // Tasks
       }
     }
     return count;
   }
 
-  /// ✅ Get item at specific index (header, task, or empty placeholder)
+  /// ✅ Get item at specific index (header or task)
   dynamic _getGroupedItemAtIndex(
     Map<String, List<Task>> groupedTasks,
     int index,
@@ -178,46 +199,24 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     int currentIndex = 0;
 
     for (final entry in groupedTasks.entries) {
-      // Always add header
-      if (currentIndex == index) {
-        return {'type': 'header', 'title': entry.key};
-      }
-      currentIndex++;
-
-      // Add tasks
-      for (final task in entry.value) {
+      if (entry.value.isNotEmpty) {
+        // Add header
         if (currentIndex == index) {
-          return task;
+          return entry.key;
         }
         currentIndex++;
-      }
 
-      // Add empty placeholder if no tasks
-      if (entry.value.isEmpty) {
-        if (currentIndex == index) {
-          return {'type': 'empty', 'title': entry.key};
+        // Add tasks
+        for (final task in entry.value) {
+          if (currentIndex == index) {
+            return task;
+          }
+          currentIndex++;
         }
-        currentIndex++;
       }
     }
 
     return null;
-  }
-
-  /// ✅ Build empty group placeholder widget
-  Widget _buildEmptyPlaceholder(String groupTitle) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 16.h),
-      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
-      child: Text(
-        'No tasks in this category',
-        style: TextStyle(
-          fontSize: 14.sp,
-          fontStyle: FontStyle.italic,
-          color: Colors.grey[600],
-        ),
-      ),
-    );
   }
 
   /// ✅ Build section header widget
@@ -725,15 +724,9 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                                     index,
                                   );
 
-                                  if (item is Map && item['type'] == 'header') {
+                                  if (item is String) {
                                     // This is a section header
-                                    return _buildSectionHeader(item['title']);
-                                  } else if (item is Map &&
-                                      item['type'] == 'empty') {
-                                    // This is an empty group placeholder
-                                    return _buildEmptyPlaceholder(
-                                      item['title'],
-                                    );
+                                    return _buildSectionHeader(item);
                                   } else if (item is Task) {
                                     // This is a task
                                     return Dismissible(
@@ -774,36 +767,10 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                                       },
                                       child: TaskCard(
                                         task: item,
-                                        onDelete: () async {
-                                          final confirmed =
-                                              await _confirmDelete(context);
-                                          if (confirmed) {
-                                            await _deleteTask(item.id);
-                                            if (context.mounted) {
-                                              toastification.show(
-                                                context: context,
-                                                type:
-                                                    ToastificationType.success,
-                                                style: ToastificationStyle
-                                                    .flatColored,
-                                                title: Text(
-                                                  'Task deleted',
-                                                  style: TextStyle(
-                                                    fontSize: 14.sp,
-                                                  ),
-                                                ),
-                                                description: Text(
-                                                  'The task has been removed',
-                                                  style: TextStyle(
-                                                    fontSize: 12.sp,
-                                                  ),
-                                                ),
-                                                autoCloseDuration:
-                                                    const Duration(seconds: 3),
-                                              );
-                                            }
-                                          }
-                                        },
+                                        onTapArrow: () =>
+                                            _showTaskDetailsBottomSheet(item),
+                                        onEdit: () =>
+                                            _showEditTaskBottomSheet(item),
                                       ),
                                     );
                                   }
@@ -964,13 +931,6 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
                     ),
                     if (widget.task.completedDate != null) ...[
                       SizedBox(height: screenHeight * 0.01),
-                      Text(
-                        'Completed: ${_formatDate(widget.task.completedDate!)}',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12.sp : 14.sp,
-                          color: const Color(0xFF6B7280),
-                        ),
-                      ),
                     ],
                   ],
                 ),
@@ -998,7 +958,7 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
                   ),
                   tabs: const [
                     Tab(text: 'Photo'),
-                    Tab(text: 'Priority'),
+                    Tab(text: 'Details'),
                   ],
                 ),
               ),
@@ -1595,23 +1555,28 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
       final walletSnapshot = await childRef.collection('Wallet').limit(1).get();
 
       if (walletSnapshot.docs.isNotEmpty) {
-        final walletDoc = walletSnapshot.docs.first.reference;
+        final walletDocRef = walletSnapshot.docs.first.reference;
 
-        // ✅ Step 3: Increment the totalBalance inside the wallet document
+        // ✅ Step 3: Safely increment totalBalance
         await FirebaseFirestore.instance.runTransaction((transaction) async {
-          final walletData = await transaction.get(walletDoc);
+          final walletData = await transaction.get(walletDocRef);
+
           if (walletData.exists) {
             final currentBalance = (walletData.data()?['totalBalance'] ?? 0)
                 .toDouble();
-            transaction.update(walletDoc, {
+            transaction.update(walletDocRef, {
               'totalBalance': currentBalance + task.allowance,
             });
+          } else {
+            // if wallet doc somehow doesn’t exist yet
+            transaction.set(walletDocRef, {'totalBalance': task.allowance});
           }
         });
       } else {
-        debugPrint('⚠️ No wallet document found for this child.');
+        // ✅ Optional fallback: create wallet doc if none exists
+        final newWalletRef = childRef.collection('Wallet').doc();
+        await newWalletRef.set({'totalBalance': task.allowance});
       }
-
       // Close dialogs
       Navigator.of(context).pop(); // Close loading dialog
       Navigator.of(context).pop(); // Close bottom sheet

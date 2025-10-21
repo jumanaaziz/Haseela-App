@@ -519,8 +519,9 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
         'dueDate': _toDate != null ? Timestamp.fromDate(_toDate!) : null, // ✅
         'createdAt': FieldValue.serverTimestamp(),
         'assignedBy': parentRef, // DocumentReference
-        'completedImagePath':
-            null, // Initialize as null, will be updated when child uploads image
+        'completedImagePath': null,
+        'completedDate': null, // ✅ Add this line
+        // Initialize as null, will be updated when child uploads image
       };
 
       await taskDoc.set(taskData);

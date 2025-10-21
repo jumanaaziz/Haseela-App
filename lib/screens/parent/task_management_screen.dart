@@ -849,7 +849,7 @@ class TaskDetailsBottomSheet extends StatefulWidget {
   const TaskDetailsBottomSheet({
     super.key,
     required this.task,
-    required this.childId, // ✅ add this line
+    required this.childId,
   });
 
   @override
@@ -1464,6 +1464,7 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
     );
   }
 
+  // ✅ FIXED _approveTask METHOD
   Future<void> _approveTask(Task task) async {
     try {
       // Step 1️⃣ Confirm approval
@@ -1537,6 +1538,7 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
           .doc(parentId)
           .collection('Children')
           .doc(widget.childId);
+
       print(
         '🔥 APPROVE DEBUG - ParentID: $parentId | ChildID: ${widget.childId}',
       );
@@ -1544,59 +1546,88 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
       final taskRef = childRef.collection('Tasks').doc(task.id);
       final walletDocRef = childRef.collection('Wallet').doc('wallet001');
 
-      // Step 4️⃣ Atomic transaction
+      // Step 4️⃣ Atomic transaction with FIXED totalBalance update
       await FirebaseFirestore.instance.runTransaction((tx) async {
         final taskSnap = await tx.get(taskRef);
         final taskData = taskSnap.data() as Map<String, dynamic>?;
 
-        // avoid double credit if already done
+        // Avoid double credit if already done
         if (taskData != null &&
             (taskData['status']?.toString().toLowerCase() == 'done')) {
-          print('DEBUG: Task already approved, skipping balance update.');
+          print('⚠️ DEBUG: Task already approved, skipping balance update.');
           return;
         }
 
-        // ensure wallet exists (merge if already there)
-        tx.set(walletDocRef, {
-          'totalBalance': FieldValue.increment(0),
-          'spendingBalance': 0.0,
-          'savingBalance': 0.0,
-          'savingGoal': 100.0,
-          'userId': widget.childId,
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        // Get current wallet data
+        final walletSnap = await tx.get(walletDocRef);
+        final walletData = walletSnap.data() as Map<String, dynamic>?;
 
-        // increment balance safely
-        tx.update(walletDocRef, {
-          'totalBalance': FieldValue.increment(task.allowance),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        if (walletData == null) {
+          // Create new wallet if it doesn't exist
+          print('✅ Creating new wallet with allowance: ${task.allowance}');
+          tx.set(walletDocRef, {
+            'totalBalance': task.allowance,
+            'spendingBalance': 0.0,
+            'savingBalance': 0.0,
+            'savingGoal': 100.0,
+            'userId': widget.childId,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          // ✅ FIX: Update existing wallet - directly calculate and set new totalBalance
+          final currentTotal = (walletData['totalBalance'] ?? 0.0).toDouble();
+          final newTotal = currentTotal + task.allowance;
 
-        // mark task done
+          print(
+            '✅ Updating wallet: Current=$currentTotal, Adding=${task.allowance}, New=$newTotal',
+          );
+
+          tx.update(walletDocRef, {
+            'totalBalance':
+                newTotal, // ✅ Direct value instead of FieldValue.increment
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        // Mark task as done
         tx.update(taskRef, {
           'status': 'done',
           'completedDate': FieldValue.serverTimestamp(),
         });
+
+        print('✅ Transaction completed successfully');
       });
 
       // Step 5️⃣ Close dialogs
-      if (Navigator.canPop(context)) Navigator.pop(context);
-      if (Navigator.canPop(context)) Navigator.pop(context);
+      if (Navigator.canPop(context)) Navigator.pop(context); // Close loading
+      if (Navigator.canPop(context))
+        Navigator.pop(context); // Close bottom sheet
 
+      // Step 6️⃣ Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Task approved! +${task.allowance.toStringAsFixed(0)} ﷼ added to wallet.',
+            '✅ Task approved! +${task.allowance.toStringAsFixed(0)} ﷼ added to total wallet.',
           ),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
         ),
       );
-    } catch (e) {
+
+      print('✅ Task approval completed - Total Balance updated');
+    } catch (e, stackTrace) {
+      // Close loading dialog if open
       if (Navigator.canPop(context)) Navigator.pop(context);
+
+      print('❌ Error approving task: $e');
+      print('Stack trace: $stackTrace');
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error approving task: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -1683,7 +1714,7 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
             .collection('Parents')
             .doc(FirebaseAuth.instance.currentUser!.uid)
             .collection('Children')
-            .doc(widget.childId) // Use the selected child's ID
+            .doc(widget.childId)
             .collection('Tasks')
             .doc(task.id)
             .update({'status': 'rejected'});
@@ -1734,12 +1765,11 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
       case 'low':
         return Colors.green;
       default:
-        return Colors.yellow; // Default to yellow for normal priority
+        return Colors.yellow;
     }
   }
 
   IconData _getPriorityIcon(String priority) {
-    // Always return circle icon - it will be colored based on priority
     return Icons.circle;
   }
 

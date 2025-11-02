@@ -138,60 +138,60 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
           ...pendingTasksSnapshot.docs,
         ];
 
-        if (allCompletedTasks.isEmpty) {
-          print('     ✗ No completed challenge tasks found');
-          continue;
-        }
-
         // Calculate score based on how fast they completed (earliest completion wins)
         DateTime? earliestCompletion;
         int completedCount = 0;
 
-        for (var taskDoc in allCompletedTasks) {
-          final taskData = taskDoc.data() as Map<String, dynamic>?;
-          
-          // Debug: print task details
-          print('     Task ${taskDoc.id}: status=${taskData?['status']}, completedDate=${taskData?['completedDate']}');
-          
-          if (taskData != null && taskData['completedDate'] != null) {
-            final completedDate = (taskData['completedDate'] as Timestamp).toDate();
+        if (allCompletedTasks.isNotEmpty) {
+          for (var taskDoc in allCompletedTasks) {
+            final taskData = taskDoc.data() as Map<String, dynamic>?;
             
-            // Check if within last 7 days
-            if (completedDate.isAfter(weekStart.subtract(const Duration(seconds: 1)))) {
-              print('       ✓ Completed within last 7 days: $completedDate');
-              if (earliestCompletion == null || completedDate.isBefore(earliestCompletion)) {
-                earliestCompletion = completedDate;
+            // Debug: print task details
+            print('     Task ${taskDoc.id}: status=${taskData?['status']}, completedDate=${taskData?['completedDate']}');
+            
+            if (taskData != null && taskData['completedDate'] != null) {
+              final completedDate = (taskData['completedDate'] as Timestamp).toDate();
+              
+              // Check if within last 7 days
+              if (completedDate.isAfter(weekStart.subtract(const Duration(seconds: 1)))) {
+                print('       ✓ Completed within last 7 days: $completedDate');
+                if (earliestCompletion == null || completedDate.isBefore(earliestCompletion)) {
+                  earliestCompletion = completedDate;
+                }
+                completedCount++;
+              } else {
+                print('       ✗ Completed outside 7-day window: $completedDate');
               }
-              completedCount++;
             } else {
-              print('       ✗ Completed outside 7-day window: $completedDate');
+              print('       ⚠️ No completedDate field');
             }
-          } else {
-            print('       ⚠️ No completedDate field');
           }
         }
 
-        if (earliestCompletion != null) {
-          print('   ✓ Adding entry: $childName with $completedCount completion(s)');
-          entriesMap[childId] = LeaderboardEntry(
-            childId: childId,
-            childName: childName,
-            childAvatar: childAvatar,
-            completedCount: completedCount,
-            earliestCompletion: earliestCompletion,
-          );
-        }
+        // Always add entry, even if completedCount is 0
+        print('   ✓ Adding entry: $childName with $completedCount completion(s)');
+        entriesMap[childId] = LeaderboardEntry(
+          childId: childId,
+          childName: childName,
+          childAvatar: childAvatar,
+          completedCount: completedCount,
+          earliestCompletion: earliestCompletion ?? DateTime.now(),
+        );
       }
 
-      // Convert to list and sort by count (more completions = higher rank), then by speed
+      // Convert to list and sort: by count first, then by speed for those with tasks, then alphabetically for those with 0 tasks
       final entries = entriesMap.values.toList();
       entries.sort((a, b) {
         // First sort by count (more completions = higher rank)
         if (b.completedCount != a.completedCount) {
           return b.completedCount.compareTo(a.completedCount);
         }
-        // If same count, sort by earliest completion time (faster = higher rank)
-        return a.earliestCompletion.compareTo(b.earliestCompletion);
+        // If both have tasks (count > 0), sort by earliest completion time (faster = higher rank)
+        if (a.completedCount > 0 && b.completedCount > 0) {
+          return a.earliestCompletion.compareTo(b.earliestCompletion);
+        }
+        // If both have 0 tasks, sort alphabetically by name
+        return a.childName.toLowerCase().compareTo(b.childName.toLowerCase());
       });
 
       print('✅ Weekly leaderboard loaded: ${entries.length} entries');
@@ -272,49 +272,52 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
           ...pendingTasksSnapshot.docs,
         ];
 
-        if (allCompletedTasks.isEmpty) continue;
-
         // Calculate score based on how fast they completed (earliest completion wins)
         DateTime? earliestCompletion;
         int completedCount = 0;
 
-        for (var taskDoc in allCompletedTasks) {
-          final taskData = taskDoc.data() as Map<String, dynamic>?;
-          if (taskData != null && taskData['completedDate'] != null) {
-            final completedDate = (taskData['completedDate'] as Timestamp).toDate();
-            
-            // Check if within selected month
-            if (completedDate.isAfter(monthStart.subtract(const Duration(seconds: 1))) &&
-                completedDate.isBefore(monthEnd.add(const Duration(seconds: 1)))) {
-              print('       ✓ Completed in selected month: $completedDate');
-              if (earliestCompletion == null || completedDate.isBefore(earliestCompletion)) {
-                earliestCompletion = completedDate;
+        if (allCompletedTasks.isNotEmpty) {
+          for (var taskDoc in allCompletedTasks) {
+            final taskData = taskDoc.data() as Map<String, dynamic>?;
+            if (taskData != null && taskData['completedDate'] != null) {
+              final completedDate = (taskData['completedDate'] as Timestamp).toDate();
+              
+              // Check if within selected month
+              if (completedDate.isAfter(monthStart.subtract(const Duration(seconds: 1))) &&
+                  completedDate.isBefore(monthEnd.add(const Duration(seconds: 1)))) {
+                print('       ✓ Completed in selected month: $completedDate');
+                if (earliestCompletion == null || completedDate.isBefore(earliestCompletion)) {
+                  earliestCompletion = completedDate;
+                }
+                completedCount++;
               }
-              completedCount++;
             }
           }
         }
 
-        if (earliestCompletion != null) {
-          entriesMap[childId] = LeaderboardEntry(
-            childId: childId,
-            childName: childName,
-            childAvatar: childAvatar,
-            completedCount: completedCount,
-            earliestCompletion: earliestCompletion,
-          );
-        }
+        // Always add entry, even if completedCount is 0
+        entriesMap[childId] = LeaderboardEntry(
+          childId: childId,
+          childName: childName,
+          childAvatar: childAvatar,
+          completedCount: completedCount,
+          earliestCompletion: earliestCompletion ?? DateTime.now(),
+        );
       }
 
-      // Convert to list and sort by count (more completions = higher rank), then by speed
+      // Convert to list and sort: by count first, then by speed for those with tasks, then alphabetically for those with 0 tasks
       final entries = entriesMap.values.toList();
       entries.sort((a, b) {
         // First sort by count (more completions = higher rank)
         if (b.completedCount != a.completedCount) {
           return b.completedCount.compareTo(a.completedCount);
         }
-        // If same count, sort by earliest completion time (faster = higher rank)
-        return a.earliestCompletion.compareTo(b.earliestCompletion);
+        // If both have tasks (count > 0), sort by earliest completion time (faster = higher rank)
+        if (a.completedCount > 0 && b.completedCount > 0) {
+          return a.earliestCompletion.compareTo(b.earliestCompletion);
+        }
+        // If both have 0 tasks, sort alphabetically by name
+        return a.childName.toLowerCase().compareTo(b.childName.toLowerCase());
       });
 
       setState(() {

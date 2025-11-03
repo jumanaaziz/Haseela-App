@@ -331,12 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: CustomBottomNavigationBar(
-        currentIndex: 0,
-        onTap: (index) {
-          _onNavTap(context, index);
-        },
-      ),
+      // Bottom navigation is handled by ChildMainWrapper
     );
   }
 

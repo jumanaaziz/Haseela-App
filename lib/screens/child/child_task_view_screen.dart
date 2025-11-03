@@ -9,6 +9,7 @@ import '../services/haseela_service.dart';
 import '../../widgets/custom_bottom_nav.dart'; // adjust the path if it's in another folder
 import 'child_home_screen.dart';
 import 'wishlist_screen.dart';
+import 'leaderboard/leaderboard_screen.dart';
 
 class ChildTaskViewScreen extends StatefulWidget {
   final String parentId;
@@ -82,8 +83,15 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         );
         break;
       case 3:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Leaderboard coming soon')),
+        // Navigate to Leaderboard
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LeaderboardScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
         );
         break;
     }

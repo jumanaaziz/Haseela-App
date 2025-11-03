@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../models/user_profile.dart';
 import '../../models/wallet.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 required for Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firebase_service.dart';
 import 'spending_wallet_screen.dart';
 import 'saving_wallet_screen.dart';
 import 'transfer_screen.dart';
-import '../../widgets/custom_bottom_nav.dart'; // adjust the path if needed
+import '../../widgets/custom_bottom_nav.dart';
 import 'package:haseela_app/screens/child/child_task_view_screen.dart';
 import 'package:haseela_app/screens/child/wishlist_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:haseela_app/screens/auth_wrapper.dart';
+import 'auto_currency_scanner_screen.dart'; // Import the new scanner
+import 'leaderboard/leaderboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String parentId;
@@ -32,13 +32,11 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
   File? avatarImage;
   String? avatarUrl;
-  Map<String, dynamic>? _childData; // 👈 for storing child profile data
+  Map<String, dynamic>? _childData;
   int _navBarIndex = 0;
-  // User data
   UserProfile? userProfile;
   Wallet? userWallet;
 
-  // IDs for Firebase structure
   late final String parentId;
   late final String childId;
 
@@ -74,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onNavTap(BuildContext context, int index) {
-    if (index == _navBarIndex) return; // prevent unnecessary rebuild
+    if (index == _navBarIndex) return;
 
     setState(() {
       _navBarIndex = index;
@@ -82,10 +80,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     switch (index) {
       case 0:
-        // Already on Home → do nothing
         break;
       case 1:
-        // ✅ Navigate to Tasks
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -96,11 +92,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
         break;
-        
-         // ✅ Navigate to Wishlist
+      case 2:
         Navigator.pushReplacement(
           context,
-              MaterialPageRoute(
+          MaterialPageRoute(
             builder: (_) => WishlistScreen(
               parentId: widget.parentId,
               childId: widget.childId,
@@ -109,9 +104,14 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
       case 3:
-        // 🔸 Leaderboard tab placeholder
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Leaderboard coming soon')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LeaderboardScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
         );
         break;
     }
@@ -121,10 +121,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       print('Loading data for parent: $parentId, child: $childId');
 
-      // 🔹 Test Firebase connection first
       await FirebaseService.testFirebaseConnection(parentId, childId);
 
-      // 🔹 Load child profile (avatar, etc.)
       final profileData = await FirebaseService.getChildProfile(
         parentId,
         childId,
@@ -141,7 +139,6 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
 
-      // 🔹 Load wallet
       var wallet = await FirebaseService.getChildWallet(parentId, childId);
       print('Wallet loaded: ${wallet != null}');
 
@@ -161,7 +158,6 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // 🔹 Update state
       if (wallet != null) {
         setState(() {
           userWallet = wallet;
@@ -186,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _childData = doc.data();
         });
         print('✅ Child profile loaded: $_childData');
-        isLoading = false; // ✅ Stop loading once data is ready
+        isLoading = false;
       } else {
         print(
           '⚠️ Child document not found for $childId under parent $parentId',
@@ -199,7 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1️⃣ Loading State
     if (isLoading) {
       return Scaffold(
         backgroundColor: const Color(0xFFEFF1F3),
@@ -227,7 +222,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // 2️⃣ Error State
     if (userWallet == null) {
       return Scaffold(
         backgroundColor: const Color(0xFFEFF1F3),
@@ -268,7 +262,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // 3️⃣ Main Content State
     return Scaffold(
       backgroundColor: const Color(0xFFEFF1F3),
       body: SafeArea(
@@ -280,14 +273,15 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildProfileCard(),
               SizedBox(height: 24.h),
               _buildWalletCards(),
+              SizedBox(height: 16.h),
+              _buildAddMoneyCard(),
             ],
           ),
         ),
       ),
       bottomNavigationBar: CustomBottomNavigationBar(
-        currentIndex: 0, // ✅ Home tab highlighted
+        currentIndex: 0,
         onTap: (index) {
-          // The actual navigation logic is now in _onNavTap
           _onNavTap(context, index);
         },
       ),
@@ -310,17 +304,12 @@ class _HomeScreenState extends State<HomeScreen> {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFB37BE7), // Green from semantic colors
-              Color.fromARGB(255, 163, 70, 250), // Light purple from overlays
-            ],
+            colors: [Color(0xFF47C272), Color(0xFFB37BE7)],
           ),
           borderRadius: BorderRadius.circular(20.r),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(
-                0.1,
-              ), // Used withOpacity for responsiveness
+              color: Colors.black.withOpacity(0.1),
               blurRadius: 20.r,
               offset: Offset(0, 8.h),
             ),
@@ -329,10 +318,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile Header
             Row(
               children: [
-                // Profile Avatar (only editable field)
                 GestureDetector(
                   onTap: () => _editProfileAvatar(),
                   child: Stack(
@@ -345,9 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           border: Border.all(color: Colors.white, width: 3.w),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(
-                                0.1,
-                              ), // Used withOpacity for responsiveness
+                              color: Colors.black.withOpacity(0.1),
                               blurRadius: 10.r,
                               offset: Offset(0, 4.h),
                             ),
@@ -361,30 +346,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                   height: 60.w,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) {
-                                    // Fallback to local file if network image fails
-                                    return avatarImage != null
-                                        ? Image.file(
-                                            avatarImage!,
-                                            width: 60.w,
-                                            height: 60.w,
-                                            fit: BoxFit.cover,
-                                          )
-                                        : Container(
-                                            color: Colors.grey[300],
-                                            child: Icon(
-                                              Icons.child_care,
-                                              size: 30.sp,
-                                              color: Colors.grey[600],
-                                            ),
-                                          );
+                                    return Container(
+                                      color: Colors.grey[300],
+                                      child: Icon(
+                                        Icons.child_care,
+                                        size: 30.sp,
+                                        color: Colors.grey[600],
+                                      ),
+                                    );
                                   },
-                                )
-                              : avatarImage != null
-                              ? Image.file(
-                                  avatarImage!,
-                                  width: 60.w,
-                                  height: 60.w,
-                                  fit: BoxFit.cover,
                                 )
                               : Container(
                                   color: Colors.grey[300],
@@ -418,8 +388,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 SizedBox(width: 16.w),
-
-                // Name and Greeting
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,24 +401,19 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontFamily: 'SF Pro Text',
                         ),
                       ),
-
                       SizedBox(height: 4.h),
                       Text(
                         "Welcome back!",
                         style: TextStyle(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w500,
-                          color: Colors.white.withOpacity(
-                            0.9,
-                          ), // Used withOpacity for responsiveness
+                          color: Colors.white.withOpacity(0.9),
                           fontFamily: 'SF Pro Text',
                         ),
                       ),
                     ],
                   ),
                 ),
-
-                // Expand/Collapse Icon
                 Icon(
                   isProfileExpanded
                       ? Icons.keyboard_arrow_up
@@ -460,8 +423,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-
-            // Expanded Profile Details
             if (isProfileExpanded) ...[
               SizedBox(height: 20.h),
               Column(
@@ -483,7 +444,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   SizedBox(height: 16.h),
-
                   _buildProfileField(
                     "First Name",
                     _childData?['firstName'] ?? '-',
@@ -503,7 +463,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              SizedBox(height: 20.h), // Added vertical space before button
+              SizedBox(height: 20.h),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -547,9 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(
             fontSize: 12.sp,
             fontWeight: FontWeight.w500,
-            color: Colors.white.withOpacity(
-              0.8,
-            ), // Used withOpacity for responsiveness
+            color: Colors.white.withOpacity(0.8),
             fontFamily: 'SF Pro Text',
           ),
         ),
@@ -581,15 +539,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         SizedBox(height: 16.h),
-
-        // Total Wallet Card (Bigger)
         _buildTotalWalletCard(),
         SizedBox(height: 16.h),
-
-        // Spending and Saving Cards
         Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.start, // Align cards to the top
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _buildWalletCard(
@@ -616,6 +569,75 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildAddMoneyCard() {
+    return GestureDetector(
+      onTap: _onAddMoneyFlow,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(16.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16.r),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10.r,
+              offset: Offset(0, 4.h),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: EdgeInsets.all(10.w),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2D3748).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Icon(
+                Icons.camera_alt,
+                color: const Color(0xFF2D3748),
+                size: 22.sp,
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Scan money automatically',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF2D3748),
+                      fontFamily: 'SF Pro Text',
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    'Just point your camera at Saudi currency',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: const Color(0xFFA29EB6),
+                      fontFamily: 'SF Pro Text',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: const Color(0xFFA29EB6),
+              size: 16.sp,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTotalWalletCard() {
     return Container(
       width: double.infinity,
@@ -629,9 +651,7 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(20.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(
-              0.1,
-            ), // Used withOpacity for responsiveness
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 20.r,
             offset: Offset(0, 8.h),
           ),
@@ -645,9 +665,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: EdgeInsets.all(12.w),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(
-                    0.2,
-                  ), // Used withOpacity for responsiveness
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12.r),
                 ),
                 child: Icon(
@@ -666,9 +684,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withOpacity(
-                          0.9,
-                        ), // Used withOpacity for responsiveness
+                        color: Colors.white.withOpacity(0.9),
                         fontFamily: 'SF Pro Text',
                       ),
                     ),
@@ -731,9 +747,7 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(16.r),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(
-                0.05,
-              ), // Used withOpacity for responsiveness
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 10.r,
               offset: Offset(0, 4.h),
             ),
@@ -747,9 +761,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: EdgeInsets.all(8.w),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(
-                      0.1,
-                    ), // Used withOpacity for responsiveness
+                    color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8.r),
                   ),
                   child: Icon(icon, color: color, size: 20.sp),
@@ -845,6 +857,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _editProfileAvatar() {
+    final List<String> avatarOptions = [
+      'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-2.png?alt=media&token=b9f1e645-9931-4502-8bd7-2762cadf3325',
+      'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-1.png?alt=media&token=65696973-beb7-434f-be28-b7190455632f',
+      'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-3.png?alt=media&token=e5feeb34-2a3a-49c4-a752-b59ce5960240',
+      'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-4.png?alt=media&token=2debb007-f86e-44a2-b09c-0057b6596322',
+      'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-5.png?alt=media&token=c9b9bc73-bdcd-45a7-a3fe-68f611e157cb',
+      'https://firebasestorage.googleapis.com/v0/b/haseela-95ea5.firebasestorage.app/o/avatar%2FUpstream-6.png?alt=media&token=c2eb55c4-bdd1-4ec0-a921-7da92cf86df4',
+    ];
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -852,66 +873,85 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(20.r),
         ),
         title: Text(
-          "Update Avatar",
+          "Choose Your Avatar",
           style: TextStyle(
             fontSize: 18.sp,
             fontWeight: FontWeight.bold,
             fontFamily: 'SF Pro Text',
           ),
         ),
-        // IMPORTANT: Wrap content in SingleChildScrollView to handle vertical overflow
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Upload from device option
-              GestureDetector(
+        content: SizedBox(
+          width: double.maxFinite,
+          child: GridView.builder(
+            shrinkWrap: true,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 12.w,
+              mainAxisSpacing: 12.h,
+            ),
+            itemCount: avatarOptions.length,
+            itemBuilder: (context, index) {
+              final avatarUrl = avatarOptions[index];
+              final isSelected = this.avatarUrl == avatarUrl;
+
+              return GestureDetector(
                 onTap: () async {
                   Navigator.pop(context);
-                  await _pickImageFromGallery();
+                  await _selectPredefinedAvatar(avatarUrl);
                 },
                 child: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(16.w),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF643FDB).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12.r),
-                    border: Border.all(color: const Color(0xFF643FDB)),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF643FDB)
+                          : Colors.grey.shade300,
+                      width: isSelected ? 3.w : 2.w,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF643FDB).withOpacity(0.3),
+                              blurRadius: 8.r,
+                              offset: Offset(0, 2.h),
+                            ),
+                          ]
+                        : [],
                   ),
-                  child: Row(
-                    // Use MainAxisAlignment.start or Center (you were using Center)
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    // Use MainAxisSize.min to prevent the Row from pushing boundaries if possible
-                    mainAxisSize: MainAxisSize
-                        .min, // This helps constrain the row to its children
-                    children: [
-                      Icon(
-                        Icons.photo_camera,
-                        color: const Color(0xFF643FDB),
-                        size: 24.sp,
-                      ),
-                      SizedBox(width: 12.w),
-                      // 🌟 FIX: Wrap the Text widget in an Expanded widget 🌟
-                      // This forces the Text to take up the remaining space
-                      // and apply automatic line wrapping if necessary.
-                      Expanded(
-                        child: Text(
-                          "Upload Photo from Device",
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF643FDB),
-                            fontFamily: 'SF Pro Text',
+                  child: ClipOval(
+                    child: Image.network(
+                      avatarUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey[300],
+                          child: Icon(
+                            Icons.person,
+                            size: 30.sp,
+                            color: Colors.grey[600],
                           ),
-                          // You can also add overflow: TextOverflow.ellipsis
-                          // if you prefer truncation over wrapping on extremely small screens.
-                        ),
-                      ),
-                    ],
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                : null,
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              const Color(0xFF643FDB),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
         ),
         actions: [
@@ -931,81 +971,166 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _pickImageFromGallery() async {
+  Future<void> _selectPredefinedAvatar(String avatarUrl) async {
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 300,
-        maxHeight: 300,
-        imageQuality: 80,
+      print('=== SELECTING PREDEFINED AVATAR ===');
+      print('Parent ID: $parentId');
+      print('Child ID: $childId');
+      print('Avatar URL: $avatarUrl');
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: EdgeInsets.all(20.w),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    const Color(0xFF643FDB),
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                Text(
+                  'Updating avatar...',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'SF Pro Text',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
 
-      if (image != null) {
+      final success = await FirebaseService.updateChildAvatar(
+        parentId,
+        childId,
+        avatarUrl,
+      );
+
+      if (mounted) Navigator.pop(context);
+
+      if (success) {
         setState(() {
-          avatarImage = File(image.path);
+          this.avatarUrl = avatarUrl;
+          avatarImage = null;
         });
 
-        // Upload avatar to Firebase Storage
-        print('=== AVATAR UPLOAD DEBUG ===');
-        print('Parent ID: $parentId');
-        print('Child ID: $childId');
-        print('Image path: ${image.path}');
-
-        final avatarUrl = await FirebaseService.uploadAvatar(
-          parentId,
-          childId,
-          File(image.path),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Avatar updated successfully!'),
+            backgroundColor: const Color(0xFF47C272),
+            duration: Duration(seconds: 2),
+          ),
         );
-
-        print('Avatar URL received: $avatarUrl');
-
-        if (avatarUrl != null) {
-          // Save avatar URL to Firebase Firestore
-          print('Saving avatar URL to Firestore...');
-          final success = await FirebaseService.updateChildAvatar(
-            parentId,
-            childId,
-            avatarUrl,
-          );
-
-          print('Avatar save success: $success');
-
-          if (success) {
-            setState(() {
-              this.avatarUrl = avatarUrl; // Store the uploaded URL
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Avatar uploaded and saved successfully!'),
-                backgroundColor: const Color(0xFF47C272),
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to save avatar to database'),
-                backgroundColor: const Color(0xFFFF6A5D),
-              ),
-            );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to upload avatar'),
-              backgroundColor: const Color(0xFFFF6A5D),
-            ),
-          );
-        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update avatar. Please try again.'),
+            backgroundColor: const Color(0xFFFF6A5D),
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     } catch (e) {
+      if (mounted) Navigator.pop(context);
+
+      print('Error selecting avatar: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to pick image: $e'),
+          content: Text('Error: $e'),
           backgroundColor: const Color(0xFFFF6A5D),
+          duration: Duration(seconds: 2),
         ),
       );
     }
+  }
+
+  // NEW: Auto-scanning money flow with live detection
+  Future<void> _onAddMoneyFlow() async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AutoCurrencyScannerScreen(
+          onAmountDetected: (amount) async {
+            // Add detected amount only to total wallet balance
+            final double newTotal = userWallet!.totalBalance + amount;
+
+            final bool success = await FirebaseService.updateChildWalletBalance(
+              parentId,
+              childId,
+              totalBalance: newTotal,
+            );
+
+            if (success) {
+              setState(() {
+                userWallet = Wallet(
+                  id: userWallet!.id,
+                  userId: userWallet!.userId,
+                  totalBalance: newTotal,
+                  spendingBalance: userWallet!
+                      .spendingBalance, // Keep original spending balance
+                  savingBalance:
+                      userWallet!.savingBalance, // Keep original saving balance
+                  savingGoal: userWallet!.savingGoal,
+                  createdAt: userWallet!.createdAt,
+                  updatedAt: DateTime.now(),
+                );
+              });
+
+              _showInfoDialog(
+                'Success! 🎉',
+                '${amount.toStringAsFixed(0)} SAR has been added to your total wallet',
+              );
+            } else {
+              _showToast('Failed to update wallet. Please try again.');
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showInfoDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14.r),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontFamily: 'SF Pro Text',
+            fontWeight: FontWeight.w700,
+            fontSize: 16.sp,
+          ),
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            fontFamily: 'SF Pro Text',
+            fontSize: 14.sp,
+            color: const Color(0xFF2D3748),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showToast(String message) {
@@ -1056,13 +1181,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ElevatedButton.icon(
               onPressed: () async {
-                Navigator.of(context).pop(); // Close dialog first
+                Navigator.of(context).pop();
                 try {
                   await FirebaseAuth.instance.signOut();
 
                   if (!mounted) return;
 
-                  // ✅ Return to AuthWrapper directly
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(builder: (_) => const AuthWrapper()),

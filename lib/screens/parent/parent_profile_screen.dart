@@ -21,7 +21,8 @@ class ParentProfileScreen extends StatefulWidget {
   State<ParentProfileScreen> createState() => _ParentProfileScreenState();
 }
 
-class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsBindingObserver {
+class _ParentProfileScreenState extends State<ParentProfileScreen>
+    with WidgetsBindingObserver {
   ParentProfile? _parentProfile;
   List<ChildOption> _children = [];
   String _parentUsername = ''; // ✅ store parent's username from Firestore
@@ -47,7 +48,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     _setupChildrenListener();
   }
 
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -65,53 +65,33 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
 
   // Set up real-time listener for children
   void _setupChildrenListener() {
-    print('=== SETTING UP REAL-TIME CHILDREN LISTENER ===');
     _childrenSubscription = FirebaseFirestore.instance
         .collection("Parents")
         .doc(_uid)
         .collection("Children")
         .snapshots()
         .listen(
-      (QuerySnapshot snapshot) {
-        print('=== REAL-TIME UPDATE RECEIVED ===');
-        print('Snapshot size: ${snapshot.docs.length}');
-        
-        final childrenList = snapshot.docs
-            .map((doc) {
-              print('Processing child doc: ${doc.id}');
-              print('Child data: ${doc.data()}');
-              final childOption = ChildOption.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
-              print('Created ChildOption: ID=${childOption.id}, firstName=${childOption.firstName}');
-              return childOption;
-            })
-            .where((c) {
-              final hasName = c.firstName.trim().isNotEmpty;
-              print('Child ${c.firstName} (ID: ${c.id}) has valid name: $hasName');
-              return hasName;
-            })
-            .toList();
-        
-        print('Filtered to ${childrenList.length} children');
-        print('Children names: ${childrenList.map((c) => c.firstName).toList()}');
+          (QuerySnapshot snapshot) {
+            final childrenList = snapshot.docs
+                .map(
+                  (doc) => ChildOption.fromFirestore(
+                    doc.id,
+                    doc.data() as Map<String, dynamic>,
+                  ),
+                )
+                .where((child) => child.firstName.trim().isNotEmpty)
+                .toList();
 
-        if (mounted) {
-          setState(() {
-            _children = childrenList;
-          });
-          print('=== CHILDREN LIST UPDATED IN REAL-TIME ===');
-          print('New children count: ${_children.length}');
-          print('Children in state: ${_children.map((c) => c.firstName).toList()}');
-        } else {
-          print('Widget not mounted, skipping setState');
-        }
-      },
-      onError: (error) {
-        print('Error in children listener: $error');
-        if (mounted) {
-          _showToast('Error loading children: $error', ToastificationType.error);
-        }
-      },
-    );
+            if (mounted) {
+              setState(() {
+                _children = childrenList;
+              });
+            }
+          },
+          onError: (error) {
+            print('Error in children listener: $error');
+          },
+        );
   }
 
   // Fill the editing controllers from the loaded _parentProfile.
@@ -146,7 +126,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
     }
     _populateControllers();
   }
-
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
@@ -591,7 +570,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
             message: 'Username cannot be changed',
           ),
           _buildNonEditableField(
-            label: 'Email', 
+            label: 'Email',
             value: _parentProfile!.email,
             message: 'Email cannot be changed',
           ),
@@ -714,9 +693,9 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
   }
 
   Widget _buildNonEditableField({
-    required String label, 
-    required String value, 
-    required String message
+    required String label,
+    required String value,
+    required String message,
   }) {
     return Padding(
       padding: EdgeInsets.only(bottom: 10.h),
@@ -782,27 +761,43 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
                 color: Colors.black87,
               ),
             ),
-            IconButton(
-              onPressed: () async {
-                print('=== NAVIGATING TO SETUP CHILD SCREEN (Add Button) ===');
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SetupChildScreen(
-                      parentId: _uid,
-                      parentUsername: _parentUsername,
-                    ),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () async {
+                    print(
+                      '=== NAVIGATING TO SETUP CHILD SCREEN (Add Button) ===',
+                    );
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SetupChildScreen(
+                          parentId: _uid,
+                          parentUsername: _parentUsername,
+                        ),
+                      ),
+                    );
+                    print(
+                      '=== RETURNED FROM SETUP CHILD SCREEN (Add Button) ===',
+                    );
+                    print(
+                      'Real-time listener will automatically update the list',
+                    );
+                  },
+                  icon: Icon(
+                    Icons.add_circle_outline,
+                    color: const Color(0xFF8B5CF6),
+                    size: isDesktop
+                        ? 28.sp
+                        : isTablet
+                        ? 26.sp
+                        : isSmallScreen
+                        ? 20.sp
+                        : 24.sp,
                   ),
-                );
-                print('=== RETURNED FROM SETUP CHILD SCREEN (Add Button) ===');
-                print('Real-time listener will automatically update the list');
-              },
-              icon: Icon(
-                Icons.add_circle_outline,
-                color: const Color(0xFF8B5CF6),
-                size: isDesktop ? 28.sp : isTablet ? 26.sp : isSmallScreen ? 20.sp : 24.sp,
-              ),
-              tooltip: 'Add Child',
+                  tooltip: 'Add Child',
+                ),
+              ],
             ),
           ],
         ),
@@ -915,10 +910,8 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => ChildProfileViewScreen(
-                  child: child,
-                  parentId: _uid,
-                ),
+                builder: (_) =>
+                    ChildProfileViewScreen(child: child, parentId: _uid),
               ),
             );
           },
@@ -927,20 +920,48 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r,
+                  radius: isDesktop
+                      ? 30.r
+                      : isTablet
+                      ? 28.r
+                      : isSmallScreen
+                      ? 20.r
+                      : 25.r,
                   backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.1),
                   child: child.avatar != null
                       ? ClipOval(
                           child: Image.network(
                             child.avatar!,
-                            width: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
-                            height: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
+                            width:
+                                (isDesktop
+                                    ? 30.r
+                                    : isTablet
+                                    ? 28.r
+                                    : isSmallScreen
+                                    ? 20.r
+                                    : 25.r) *
+                                2,
+                            height:
+                                (isDesktop
+                                    ? 30.r
+                                    : isTablet
+                                    ? 28.r
+                                    : isSmallScreen
+                                    ? 20.r
+                                    : 25.r) *
+                                2,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stack) {
                               return Text(
                                 child.initial,
                                 style: TextStyle(
-                                  fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
+                                  fontSize: isDesktop
+                                      ? 24.sp
+                                      : isTablet
+                                      ? 22.sp
+                                      : isSmallScreen
+                                      ? 16.sp
+                                      : 20.sp,
                                   fontWeight: FontWeight.bold,
                                   color: const Color(0xFF8B5CF6),
                                 ),
@@ -951,7 +972,13 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
                       : Text(
                           child.initial,
                           style: TextStyle(
-                            fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
+                            fontSize: isDesktop
+                                ? 24.sp
+                                : isTablet
+                                ? 22.sp
+                                : isSmallScreen
+                                ? 16.sp
+                                : 20.sp,
                             fontWeight: FontWeight.bold,
                             color: const Color(0xFF8B5CF6),
                           ),
@@ -965,7 +992,13 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
                       Text(
                         child.firstName,
                         style: TextStyle(
-                          fontSize: isDesktop ? 18.sp : isTablet ? 16.sp : isSmallScreen ? 14.sp : 16.sp,
+                          fontSize: isDesktop
+                              ? 18.sp
+                              : isTablet
+                              ? 16.sp
+                              : isSmallScreen
+                              ? 14.sp
+                              : 16.sp,
                           fontWeight: FontWeight.w600,
                           color: Colors.black87,
                         ),
@@ -974,7 +1007,13 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
                       Text(
                         child.lastName,
                         style: TextStyle(
-                          fontSize: isDesktop ? 14.sp : isTablet ? 13.sp : isSmallScreen ? 11.sp : 12.sp,
+                          fontSize: isDesktop
+                              ? 14.sp
+                              : isTablet
+                              ? 13.sp
+                              : isSmallScreen
+                              ? 11.sp
+                              : 12.sp,
                           color: Colors.grey[600],
                         ),
                       ),
@@ -984,7 +1023,13 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> with WidgetsB
                 Icon(
                   Icons.arrow_forward_ios,
                   color: Colors.grey[400],
-                  size: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
+                  size: isDesktop
+                      ? 16.sp
+                      : isTablet
+                      ? 15.sp
+                      : isSmallScreen
+                      ? 12.sp
+                      : 14.sp,
                 ),
               ],
             ),

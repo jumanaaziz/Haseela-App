@@ -22,14 +22,30 @@ class TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Gold styling for challenge tasks
+    final isChallenge = task.isChallenge;
+    final cardColor = isChallenge 
+        ? const Color(0xFFFFD700).withOpacity(0.1) // Light gold background
+        : Colors.white;
+    final borderColor = isChallenge
+        ? Colors.amber.shade600 // Gold border
+        : Colors.transparent;
+    final borderWidth = isChallenge ? 2.0 : 0.0;
+
     return Container(
       margin: EdgeInsets.only(bottom: 16.h),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(
+          color: borderColor,
+          width: borderWidth,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: isChallenge
+                ? Colors.amber.withOpacity(0.2) // Gold shadow
+                : Colors.black.withOpacity(0.08),
             blurRadius: 20.r,
             offset: Offset(0, 4.h),
           ),
@@ -40,6 +56,47 @@ class TaskCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Challenge badge at top
+            if (isChallenge)
+              Container(
+                margin: EdgeInsets.only(bottom: 12.h),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.w,
+                  vertical: 6.h,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.amber.shade600,
+                      Colors.amber.shade800,
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.workspace_premium,
+                      color: Colors.white,
+                      size: 16.sp,
+                    ),
+                    SizedBox(width: 6.w),
+                    Text(
+                      'Challenge Task',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Task title and optional icons
             Row(
               children: [
@@ -49,7 +106,9 @@ class TaskCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 18.sp,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF1A1A1A),
+                      color: isChallenge 
+                          ? Colors.amber.shade900 
+                          : const Color(0xFF1A1A1A),
                     ),
                   ),
                 ),
@@ -204,3 +263,4 @@ class TaskCard extends StatelessWidget {
     }
   }
 }
+

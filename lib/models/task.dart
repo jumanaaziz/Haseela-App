@@ -26,6 +26,7 @@ class Task {
   final String?
   completedImagePath; // URL of image uploaded by child when completing task
   final String? image; // 👈 add this
+  final bool isChallenge; // Whether this task is a challenge task
 
   Task({
     required this.id,
@@ -41,6 +42,7 @@ class Task {
     this.categoryColor,
     this.completedImagePath,
     this.image,
+    this.isChallenge = false,
   });
 
   /// 🔄 Convert Firestore document to Task object
@@ -92,6 +94,7 @@ class Task {
       assignedBy: assignedByRef,
       completedImagePath: data['completedImagePath'],
       image: data['image'],
+      isChallenge: data['isChallenge'] ?? false,
     );
   }
 
@@ -187,6 +190,7 @@ class Task {
       categoryColor: color,
       completedImagePath: completedImagePath,
       image: image,
+      isChallenge: isChallenge,
     );
   }
 
@@ -206,3 +210,4 @@ class Task {
     }
   }
 }
+

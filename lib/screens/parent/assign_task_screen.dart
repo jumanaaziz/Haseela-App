@@ -39,6 +39,7 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
   DateTime? _toDate;
   String? _selectedChildId;
   TaskPriority? _priority;
+  bool _isChallengeTask = false;
 
   List<ChildOption> _children = [];
   bool _loadingChildren = false;
@@ -63,18 +64,42 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
   Future<void> _fetchChildren() async {
     setState(() => _loadingChildren = true);
     try {
+      print('=== FETCHING CHILDREN FOR ASSIGN TASK ===');
+      print('Parent UID: $_uid');
+      
       final snap = await FirebaseFirestore.instance
           .collection("Parents")
           .doc(_uid) // ✅ dynamic parent
           .collection("Children")
           .get();
 
+      print('Children snapshot size: ${snap.docs.length}');
+      
+      final allChildren = snap.docs
+          .map((doc) {
+            final data = doc.data();
+            print('Child doc ${doc.id}: firstName=${data['firstName']}, data=$data');
+            try {
+              return ChildOption.fromFirestore(doc.id, data);
+            } catch (e) {
+              print('❌ Error creating ChildOption from ${doc.id}: $e');
+              return null;
+            }
+          })
+          .where((c) => c != null)
+          .cast<ChildOption>()
+          .where((c) => c.firstName.trim().isNotEmpty)
+          .toList();
+
+      print('Filtered to ${allChildren.length} children');
+      print('Children names: ${allChildren.map((c) => c.firstName).toList()}');
+
       setState(() {
-        _children = snap.docs
-            .map((doc) => ChildOption.fromFirestore(doc.id, doc.data()))
-            .toList();
+        _children = allChildren;
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Error loading children: $e');
+      print('Stack trace: $stackTrace');
       _showError("Error loading children: $e");
     } finally {
       if (mounted) setState(() => _loadingChildren = false);
@@ -244,20 +269,21 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
 
                     SizedBox(height: 24.h),
 
-                    // Child Selection Section
-                    _FormSection(
-                      title: 'Assign To',
-                      icon: Icons.person_add_rounded,
-                      child: _ChildSelector(
-                        children: _children,
-                        selectedChildId: _selectedChildId,
-                        onSelected: (id) =>
-                            setState(() => _selectedChildId = id),
+                    // Child Selection Section (only show if not a challenge task)
+                    if (!_isChallengeTask) ...[
+                      _FormSection(
+                        title: 'Assign To',
+                        icon: Icons.person_add_rounded,
+                        child: _ChildSelector(
+                          children: _children,
+                          selectedChildId: _selectedChildId,
+                          onSelected: (id) =>
+                              setState(() => _selectedChildId = id),
+                        ),
+                        errorText: _childError,
                       ),
-                      errorText: _childError,
-                    ),
-
-                    SizedBox(height: 24.h),
+                      SizedBox(height: 24.h),
+                    ],
 
                     // Due Date Section
                     _FormSection(
@@ -388,6 +414,102 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
                       ),
                     ),
 
+                    SizedBox(height: 24.h),
+
+                    // Challenge Task Section
+                    _FormSection(
+                      title: 'Challenge Task',
+                      icon: Icons.emoji_events_rounded,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12.r),
+                              border: Border.all(
+                                color: _isChallengeTask
+                                    ? const Color(0xFF7C3AED)
+                                    : const Color(0xFFE2E8F0),
+                                width: _isChallengeTask ? 2 : 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.02),
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () => setState(() => _isChallengeTask = !_isChallengeTask),
+                                borderRadius: BorderRadius.circular(12.r),
+                                child: Container(
+                                  padding: EdgeInsets.all(16.w),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 24.w,
+                                        height: 24.w,
+                                        decoration: BoxDecoration(
+                                          color: _isChallengeTask
+                                              ? const Color(0xFF7C3AED)
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(6.r),
+                                          border: Border.all(
+                                            color: _isChallengeTask
+                                                ? const Color(0xFF7C3AED)
+                                                : const Color(0xFF94A3B8),
+                                            width: 2,
+                                          ),
+                                        ),
+                                        child: _isChallengeTask
+                                            ? Icon(
+                                                Icons.check_rounded,
+                                                color: Colors.white,
+                                                size: 16.sp,
+                                              )
+                                            : null,
+                                      ),
+                                      SizedBox(width: 12.w),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Make it a challenge task',
+                                              style: TextStyle(
+                                                fontSize: 15.sp,
+                                                fontWeight: FontWeight.w600,
+                                                color: _isChallengeTask
+                                                    ? const Color(0xFF7C3AED)
+                                                    : const Color(0xFF1E293B),
+                                              ),
+                                            ),
+                                            SizedBox(height: 4.h),
+                                            Text(
+                                              'All children can participate. Leaderboard shows who completed it first.',
+                                              style: TextStyle(
+                                                fontSize: 12.sp,
+                                                color: const Color(0xFF64748B),
+                                                height: 1.4,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     SizedBox(height: 32.h),
 
                     // Submit Button
@@ -466,7 +588,10 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
     } else if (trimmedName.length < 3) {
       _nameError = 'Task name must be at least 3 characters';
     }
-    if (_selectedChildId == null) _childError = 'Please select a child';
+    // Only require child selection if it's NOT a challenge task
+    if (!_isChallengeTask && _selectedChildId == null) {
+      _childError = 'Please select a child';
+    }
     if (_toDate == null) _dateError = 'Please select an end date';
     if (_priority == null) _priorityError = 'Please choose a priority';
 
@@ -504,13 +629,6 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
           .collection('Parents')
           .doc(_uid); // ✅
 
-      // ✅ write directly under selected child
-      final taskDoc = parentRef
-          .collection('Children')
-          .doc(_selectedChildId!)
-          .collection('Tasks')
-          .doc();
-
       final taskData = {
         'taskName': trimmedName,
         'allowance': allowance,
@@ -521,15 +639,56 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
         'assignedBy': parentRef, // DocumentReference
         'completedImagePath': null,
         'completedDate': null, // ✅ Add this line
+        'isChallenge': _isChallengeTask, // Challenge task flag
         // Initialize as null, will be updated when child uploads image
       };
 
-      await taskDoc.set(taskData);
+      if (_isChallengeTask) {
+        // If it's a challenge task, assign it to ALL children
+        final childrenSnapshot = await parentRef.collection('Children').get();
+        
+        if (childrenSnapshot.docs.isEmpty) {
+          _showError("No children found. Please add a child first.");
+          return;
+        }
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Task assigned successfully ✅')),
-      );
+        final batch = FirebaseFirestore.instance.batch();
+        
+        for (var childDoc in childrenSnapshot.docs) {
+          final taskDoc = parentRef
+              .collection('Children')
+              .doc(childDoc.id)
+              .collection('Tasks')
+              .doc();
+          
+          batch.set(taskDoc, taskData);
+        }
+
+        await batch.commit();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Challenge task assigned to ${childrenSnapshot.docs.length} children ✅',
+            ),
+          ),
+        );
+      } else {
+        // Regular task: assign to selected child only
+        final taskDoc = parentRef
+            .collection('Children')
+            .doc(_selectedChildId!)
+            .collection('Tasks')
+            .doc();
+
+        await taskDoc.set(taskData);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Task assigned successfully ✅')),
+        );
+      }
 
       // Your TaskManagementScreen listens via StreamBuilder, so no need to return Task
       Navigator.pop(context);

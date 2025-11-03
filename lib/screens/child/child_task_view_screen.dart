@@ -841,19 +841,33 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
   }
 
   Widget _buildTaskCard(Task task) {
+    final isChallenge = task.isChallenge;
+    final cardColor = isChallenge 
+        ? const Color(0xFFFFD700).withOpacity(0.1) // Light gold background
+        : Colors.white;
+    final borderColor = isChallenge
+        ? Colors.amber.shade600 // Gold border
+        : Colors.transparent;
+
     return Container(
       margin: EdgeInsets.only(
         bottom: MediaQuery.of(context).size.height * 0.02,
       ),
       padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.05),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(
           MediaQuery.of(context).size.width * 0.04,
         ),
+        border: Border.all(
+          color: borderColor,
+          width: isChallenge ? 2.0 : 0.0,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: isChallenge
+                ? Colors.amber.withOpacity(0.2) // Gold shadow
+                : Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 10,
             offset: Offset(0, 2),
@@ -863,6 +877,44 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Challenge badge
+          if (isChallenge)
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.amber.shade600,
+                    Colors.amber.shade800,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Challenge Task',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // Header with category icon and title
           Row(
             children: [
@@ -896,7 +948,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                       style: TextStyle(
                         fontSize: MediaQuery.of(context).size.width * 0.045,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF333333),
+                        color: isChallenge 
+                            ? Colors.amber.shade900 
+                            : Color(0xFF333333),
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1098,22 +1152,76 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
   }
 
   Widget _buildPendingTaskCard(Task task) {
+    final isChallenge = task.isChallenge;
+    final cardColor = isChallenge 
+        ? const Color(0xFFFFD700).withOpacity(0.1)
+        : Colors.white;
+    final borderColor = isChallenge
+        ? Colors.amber.shade600
+        : Colors.transparent;
+
     return Container(
       margin: EdgeInsets.only(bottom: 16),
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: borderColor,
+          width: isChallenge ? 2.0 : 0.0,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: isChallenge
+                ? Colors.amber.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 10,
             offset: Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Challenge badge
+          if (isChallenge)
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.amber.shade600,
+                    Colors.amber.shade800,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Challenge Task',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Row(
         children: [
           Container(
             padding: EdgeInsets.all(8),
@@ -1133,7 +1241,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF333333),
+                    color: isChallenge 
+                        ? Colors.amber.shade900 
+                        : Color(0xFF333333),
                   ),
                 ),
                 SizedBox(height: 4),
@@ -1186,35 +1296,71 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
             ),
           ],
         ],
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildCompletedTaskCard(Task task) {
-      // Check if task is rejected
-    final isRejected = task.status.toLowerCase() == 'rejected';
-    final statusColor = isRejected ? Colors.red : Colors.green;
-    final statusIcon = isRejected ? Icons.cancel : Icons.check_circle;
-    final statusMessage = isRejected 
-        ? 'Rejected by parent • No reward'
-        : 'Approved by parent • +${task.allowance.toStringAsFixed(0)} ﷼';
     return Container(
       margin: EdgeInsets.only(bottom: 16),
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
-         border: isRejected ? Border.all(color: Colors.red.withOpacity(0.3), width: 2) : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: isChallenge
+                ? Colors.amber.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 10,
             offset: Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Challenge badge
+          if (isChallenge)
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.amber.shade600,
+                    Colors.amber.shade800,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Challenge Task',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Row(
         children: [
           Container(
             padding: EdgeInsets.all(8),
@@ -1237,7 +1383,6 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF333333),
-                    //decoration: isRejected ? TextDecoration.lineThrough : null,
                   ),
                 ),
                 SizedBox(height: 4),
@@ -1291,6 +1436,8 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
               ),
             ),
           ],
+        ],
+          ),
         ],
       ),
     );
@@ -2229,3 +2376,4 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
     return task.image ?? task.completedImagePath;
   }
 }
+

@@ -8,6 +8,9 @@ class Child {
   final String avatar;
   final String qr;
   final DocumentReference parent;
+  final String? username; // Username field
+  final int level; // Current level (1-5)
+  final List<int> completedLessons; // List of completed lesson IDs
 
   Child({
     required this.id,
@@ -17,6 +20,9 @@ class Child {
     required this.avatar,
     required this.qr,
     required this.parent,
+    this.username,
+    this.level = 1,
+    this.completedLessons = const [],
   });
 
   factory Child.fromFirestore(DocumentSnapshot doc) {
@@ -56,6 +62,9 @@ class Child {
       avatar: data['avatar'] ?? '',
       qr: data['QR'] ?? '',
       parent: parentRef,
+      username: (data['username'] as String?)?.trim(),
+      level: data['level'] ?? 1,
+      completedLessons: List<int>.from(data['completedLessons'] ?? []),
     );
   }
 

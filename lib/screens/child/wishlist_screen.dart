@@ -101,15 +101,11 @@ class _WishlistScreenState extends State<WishlistScreen>
         ),
         builder: (context, walletSnapshot) {
           // Get the current balance from the wallet snapshot
-          final wallet = walletSnapshot.hasData && walletSnapshot.data != null
-              ? walletSnapshot.data!
-              : null;
-          final walletBalance = wallet != null
-              ? (wallet.spendingBalance > 0
-                    ? wallet.spendingBalance
-                    : wallet.totalBalance)
+          final wallet = walletSnapshot.hasData && walletSnapshot.data != null ? walletSnapshot.data! : null;
+          final walletBalance = wallet != null 
+              ? (wallet.spendingBalance > 0 ? wallet.spendingBalance : wallet.totalBalance)
               : 0.0;
-
+          
           return Column(
             children: [
               // Total Value Card

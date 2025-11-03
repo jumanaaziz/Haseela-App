@@ -40,76 +40,79 @@ class AuthWrapper extends StatelessWidget {
         print('AuthWrapper: Has data: ${snapshot.hasData}');
         print('AuthWrapper: Has error: ${snapshot.hasError}');
 
-        // 1️⃣ Still checking → Splash screen
+        // 🕓 1️⃣ Still waiting for Firebase to settle
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SplashScreen();
         }
 
-        // 2️⃣ If error → Launch screen
+        // ⚠️ 2️⃣ If error
         if (snapshot.hasError) {
           session.clear();
           return const LaunchScreenOld();
         }
 
-        // 3️⃣ If user is authenticated → Check role in Firestore
-        if (snapshot.hasData && snapshot.data != null) {
-          final user = snapshot.data!;
+        // 🧩 3️⃣ Handle user null carefully (transient null protection)
+        final user = snapshot.data;
+        if (user == null) {
           print(
-            'AuthWrapper: User authenticated. Checking role for ${user.uid}',
+            'AuthWrapper: ⚠️ No authenticated user yet (might be transient)',
           );
-
-          return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance
-                .collection('Users')
-                .doc(user.uid)
-                .get(),
-            builder: (context, userSnapshot) {
-              if (userSnapshot.connectionState == ConnectionState.waiting) {
-                return const SplashScreen();
-              }
-
-              if (userSnapshot.hasError ||
-                  !userSnapshot.hasData ||
-                  !userSnapshot.data!.exists) {
-                print('AuthWrapper: Error fetching role or user doc missing');
-                session.clear();
-                return const LaunchScreenOld();
-              }
-
-              final data = userSnapshot.data!.data() as Map<String, dynamic>;
-              final role = data['role'] as String?;
-              print('AuthWrapper: Role = $role');
-
-              if (role == 'parent') {
-                // ✅ Store role globally
-                session.role = 'parent';
-                session.parentId = user.uid;
-                session.childId = null;
-
-                return const ParentProfileScreen();
-              } else if (role == 'child') {
-                final parentId = data['parentId'];
-                final childId = data['childId'];
-
-                session.role = 'child';
-                session.parentId = parentId;
-                session.childId = childId;
-
-                // ⬇️ send child to the *wrapper*, not HomeScreen
-                return ChildMainWrapper(parentId: parentId, childId: childId);
-              } else {
-                print('AuthWrapper: Unknown role, redirecting to LaunchScreen');
-                session.clear();
-                return const LaunchScreenOld();
-              }
-            },
-          );
+          // Don’t immediately clear session; wait a brief moment
+          return const SplashScreen();
         }
 
-        // 4️⃣ If not authenticated → Launch screen (login/signup)
-        print('AuthWrapper: No user, showing LaunchScreen');
-        session.clear();
-        return const LaunchScreenOld();
+        print('AuthWrapper: ✅ Authenticated as ${user.uid} — checking role...');
+
+        // 🔍 4️⃣ Fetch role document
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('Users')
+              .doc(user.uid)
+              .get(),
+          builder: (context, userSnapshot) {
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
+              return const SplashScreen();
+            }
+
+            if (userSnapshot.hasError) {
+              print(
+                'AuthWrapper: ❌ Error fetching user document: ${userSnapshot.error}',
+              );
+              return const LaunchScreenOld();
+            }
+
+            if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+              print(
+                'AuthWrapper: ⚠️ No user document found for UID: ${user.uid}',
+              );
+              session.clear();
+              return const LaunchScreenOld();
+            }
+
+            final data = userSnapshot.data!.data() as Map<String, dynamic>;
+            final role = data['role'] as String?;
+            print('AuthWrapper: Role = $role');
+
+            if (role == 'parent') {
+              session.role = 'parent';
+              session.parentId = user.uid;
+              session.childId = null;
+              return const ParentProfileScreen();
+            } else if (role == 'child') {
+              final parentId = data['parentId'];
+              final childId = data['childId'];
+
+              session.role = 'child';
+              session.parentId = parentId;
+              session.childId = childId;
+              return ChildMainWrapper(parentId: parentId, childId: childId);
+            } else {
+              print('AuthWrapper: Unknown role value "$role"');
+              session.clear();
+              return const LaunchScreenOld();
+            }
+          },
+        );
       },
     );
   }

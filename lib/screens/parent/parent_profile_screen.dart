@@ -11,6 +11,7 @@ import '../parent/task_management_screen.dart';
 import '../auth_wrapper.dart';
 import 'setup_child_screen.dart';
 import 'child_profile_view_screen.dart';
+import 'parent_leaderboard_screen.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
@@ -28,6 +29,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
   String _parentUsername = ''; // ✅ store parent's username from Firestore
   bool _isExpanded = false;
   bool _isEditing = false;
+  bool _isLoadingProfile = true;
   StreamSubscription<QuerySnapshot>? _childrenSubscription;
 
   final _formKey = GlobalKey<FormState>();
@@ -38,15 +40,24 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
   Map<String, String?> _fieldErrors = {};
 
   /// ✅ Shortcut to get current logged-in UID
-  String get _uid => FirebaseAuth.instance.currentUser!.uid;
+  String get _uid {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('User is not authenticated. Please log in again.');
+    }
+    return user.uid;
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _isLoadingProfile = true;
+    _parentProfile = null; // Reset profile when initializing
     _loadParentProfile();
     _setupChildrenListener();
   }
+
 
   @override
   void dispose() {
@@ -65,33 +76,53 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
 
   // Set up real-time listener for children
   void _setupChildrenListener() {
+    print('=== SETTING UP REAL-TIME CHILDREN LISTENER ===');
     _childrenSubscription = FirebaseFirestore.instance
         .collection("Parents")
         .doc(_uid)
         .collection("Children")
-        .snapshots()
+        .snapshots(includeMetadataChanges: true) // Include metadata changes to catch all updates
         .listen(
-          (QuerySnapshot snapshot) {
-            final childrenList = snapshot.docs
-                .map(
-                  (doc) => ChildOption.fromFirestore(
-                    doc.id,
-                    doc.data() as Map<String, dynamic>,
-                  ),
-                )
-                .where((child) => child.firstName.trim().isNotEmpty)
-                .toList();
+      (QuerySnapshot snapshot) {
+        print('=== REAL-TIME UPDATE RECEIVED ===');
+        print('Snapshot size: ${snapshot.docs.length}');
+        
+        final childrenList = snapshot.docs
+            .map((doc) {
+              print('Processing child doc: ${doc.id}');
+              print('Child data: ${doc.data()}');
+              final childOption = ChildOption.fromFirestore(doc.id, doc.data() as Map<String, dynamic>);
+              print('Created ChildOption: ID=${childOption.id}, firstName=${childOption.firstName}');
+              return childOption;
+            })
+            .where((c) {
+              final hasName = c.firstName.trim().isNotEmpty;
+              print('Child ${c.firstName} (ID: ${c.id}) has valid name: $hasName');
+              return hasName;
+            })
+            .toList();
+        
+        print('Filtered to ${childrenList.length} children');
+        print('Children names: ${childrenList.map((c) => c.firstName).toList()}');
 
-            if (mounted) {
-              setState(() {
-                _children = childrenList;
-              });
-            }
-          },
-          onError: (error) {
-            print('Error in children listener: $error');
-          },
-        );
+        if (mounted) {
+          setState(() {
+            _children = childrenList;
+          });
+          print('=== CHILDREN LIST UPDATED IN REAL-TIME ===');
+          print('New children count: ${_children.length}');
+          print('Children in state: ${_children.map((c) => c.firstName).toList()}');
+        } else {
+          print('Widget not mounted, skipping setState');
+        }
+      },
+      onError: (error) {
+        print('Error in children listener: $error');
+        if (mounted) {
+          _showToast('Error loading children: $error', ToastificationType.error);
+        }
+      },
+    );
   }
 
   // Fill the editing controllers from the loaded _parentProfile.
@@ -103,14 +134,20 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
 
   Future<void> _loadParentProfile() async {
     try {
+      print('=== LOADING PARENT PROFILE ===');
+      print('Parent UID: $_uid');
+      
       // ✅ Fetch parent document
       final doc = await FirebaseFirestore.instance
           .collection("Parents")
           .doc(_uid)
           .get();
 
+      print('Document exists: ${doc.exists}');
+      
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
+        print('Document data keys: ${data.keys.toList()}');
 
         setState(() {
           // Load parent profile object (existing behavior)
@@ -119,9 +156,61 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
 
           // ✅ Also extract parent username for child setup flow
           _parentUsername = data['username'] ?? '';
+          _isLoadingProfile = false;
         });
+        print('✅ Profile loaded successfully');
+        
+        // Auto-migrate orphaned children from top-level collection
+        _migrateOrphanedChildren();
+      } else {
+        // Document doesn't exist - try to create it from Firebase Auth data
+        print('⚠️ Parent document does not exist, attempting to create from Auth data...');
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null && user.email != null) {
+          print('Firebase Auth user exists: ${user.email}');
+          
+          try {
+            // Create parent document with minimal data from Auth
+            final displayNameParts = user.displayName?.split(' ') ?? [];
+            await FirebaseFirestore.instance
+                .collection("Parents")
+                .doc(_uid)
+                .set({
+              'firstName': displayNameParts.isNotEmpty ? displayNameParts.first : 'User',
+              'lastName': displayNameParts.length > 1 
+                  ? displayNameParts.skip(1).join(' ')
+                  : '',
+              'username': user.email!.split('@').first,
+              'email': user.email!,
+              'phoneNumber': user.phoneNumber ?? '',
+              'avatar': null,
+              'createdAt': FieldValue.serverTimestamp(),
+              'role': 'parent',
+            }, SetOptions(merge: true)); // Use merge to avoid overwriting if exists
+            
+            // Reload profile after creating
+            print('✅ Parent document created, reloading profile...');
+            await _loadParentProfile();
+          } catch (createError) {
+            print('❌ Error creating parent document: $createError');
+            setState(() {
+              _isLoadingProfile = false;
+            });
+            _showToast('Error creating profile. Please contact support.', ToastificationType.error);
+          }
+        } else {
+          setState(() {
+            _isLoadingProfile = false;
+          });
+          _showToast('Not authenticated. Please log in again.', ToastificationType.error);
+        }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Error loading profile: $e');
+      print('Stack trace: $stackTrace');
+      setState(() {
+        _isLoadingProfile = false;
+      });
       _showToast('Error loading profile: $e', ToastificationType.error);
     }
     _populateControllers();
@@ -161,6 +250,114 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     });
   }
 
+  /// Migrate orphaned children from top-level Children collection to parent subcollection
+  /// This fixes existing children that were created before the subcollection structure was implemented
+  Future<void> _migrateOrphanedChildren() async {
+    try {
+      print('🔄 Starting automatic migration of orphaned children...');
+      
+      // Find all children in top-level Children collection
+      // We need to check which ones belong to this parent by checking the parent reference
+      final allChildren = await FirebaseFirestore.instance
+          .collection('Children')
+          .get();
+      
+      print('Found ${allChildren.docs.length} children in top-level collection');
+      print('Current parent UID: $_uid');
+      print('Current parent path: Parents/$_uid');
+      
+      int migratedCount = 0;
+      final parentRef = FirebaseFirestore.instance
+          .collection('Parents')
+          .doc(_uid);
+      final parentChildrenRef = parentRef.collection('Children');
+      final expectedParentPath = 'Parents/$_uid';
+      final expectedParentPathWithSlash = '/Parents/$_uid';
+      
+      for (var childDoc in allChildren.docs) {
+        final childData = childDoc.data();
+        final childId = childDoc.id;
+        final username = childData['username'] ?? 'N/A';
+        
+        print('   Checking child: $childId (username: $username)');
+        
+        // Check if this child belongs to the current parent
+        final parentField = childData['parent'];
+        bool belongsToThisParent = false;
+        
+        if (parentField == null) {
+          print('   ⚠️ Child has no parent field, skipping');
+          continue;
+        }
+        
+        if (parentField is DocumentReference) {
+          final parentPath = parentField.path;
+          belongsToThisParent = parentPath == expectedParentPath || parentPath == expectedParentPathWithSlash;
+          print('   Parent reference (DocumentReference): $parentPath');
+        } else if (parentField is String) {
+          final parentPath = parentField.trim();
+          // Check multiple possible formats
+          belongsToThisParent = 
+              parentPath == expectedParentPath ||
+              parentPath == expectedParentPathWithSlash ||
+              parentPath.contains(_uid) ||
+              parentPath.endsWith('/$_uid');
+          print('   Parent reference (String): "$parentPath"');
+        } else {
+          print('   ⚠️ Unexpected parent field type: ${parentField.runtimeType}');
+        }
+        
+        print('   → Belongs to this parent: $belongsToThisParent');
+        
+        if (!belongsToThisParent) {
+          continue; // Skip children that don't belong to this parent
+        }
+        
+        // Check if child already exists in parent subcollection
+        final existingInSubcollection = await parentChildrenRef.doc(childId).get();
+        
+        if (!existingInSubcollection.exists) {
+          print('📦 Migrating child: $childId (username: ${childData['username']})');
+          
+          // Copy child data to parent subcollection
+          // Map the data from top-level collection format to subcollection format
+          final migratedData = {
+            'firstName': childData['firstName'] ?? '',
+            'username': childData['username'] ?? '',
+            'username_lc': (childData['username'] as String?)?.toLowerCase() ?? '',
+            'email': (childData['email'] as String?)?.toLowerCase() ?? '',
+            'active': true,
+            'role': 'child',
+            'level': childData['level'] ?? 1,
+            'completedLessons': childData['completedLessons'] ?? [],
+            'lastCompletedLesson': childData['lastCompletedLesson'],
+            'lastCompletionTime': childData['lastCompletionTime'],
+            'createdAt': childData['createdAt'] ?? FieldValue.serverTimestamp(),
+            // Note: pin_hash and pin_salt won't be in top-level collection
+            // This is okay - existing Firebase Auth account will work for login
+          };
+          
+          await parentChildrenRef.doc(childId).set(migratedData);
+          migratedCount++;
+          print('✅ Migrated child $childId (username: ${childData['username']})');
+        } else {
+          print('⏭️ Child $childId already exists in subcollection, skipping');
+        }
+      }
+      
+      if (migratedCount > 0) {
+        print('✅ Migration complete: $migratedCount children migrated');
+        // Show a subtle notification that children were migrated
+        _showToast('Migrated $migratedCount child account(s) for login', ToastificationType.success);
+      } else {
+        print('✅ No children needed migration');
+      }
+    } catch (e) {
+      print('⚠️ Error during migration (non-critical): $e');
+      // Don't show error to user - migration is best-effort
+    }
+  }
+
   void _showToast(String message, ToastificationType type) {
     toastification.show(
       context: context,
@@ -169,19 +366,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
       title: Text(message),
       autoCloseDuration: const Duration(seconds: 3),
     );
-  }
-
-  void _showSetupChildDialog() async {
-    print('=== NAVIGATING TO SETUP CHILD SCREEN ===');
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            SetupChildScreen(parentId: _uid, parentUsername: _parentUsername),
-      ),
-    );
-    print('=== RETURNED FROM SETUP CHILD SCREEN ===');
-    print('Real-time listener will automatically update the list');
   }
 
   void _onNavTap(BuildContext context, int index) {
@@ -199,7 +383,10 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
         _showToast('Wishlist coming soon', ToastificationType.info);
         break;
       case 3:
-        _showToast('Leaderboard coming soon', ToastificationType.info);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ParentLeaderboardScreen()),
+        );
         break;
     }
   }
@@ -248,40 +435,155 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     final isTablet = screenWidth >= 600;
     final isDesktop = screenWidth >= 1024;
     final isSmallScreen = screenHeight < 600;
+    final isLargeScreen = screenWidth >= 1200;
+    final isExtraSmallScreen = screenWidth < 360;
 
-    // 🧠 If _parentProfile is still null, show a loading screen
+    // 🧠 If still loading, show a loading screen
+    if (_isLoadingProfile) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  const Color(0xFF7C3AED),
+                ),
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                'Loading profile...',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 🧠 If _parentProfile is null after loading, show error state
     if (_parentProfile == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(20.w),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  size: 64.sp,
+                  color: const Color(0xFFEF4444),
+                ),
+                SizedBox(height: 16.h),
+                Text(
+                  'Profile Not Found',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                Text(
+                  'Unable to load your profile. Please try again later.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _isLoadingProfile = true;
+                    });
+                    _loadParentProfile();
+                  },
+                  icon: Icon(Icons.refresh_rounded, size: 18.sp),
+                  label: Text('Retry'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C3AED),
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 24.w,
+                      vertical: 12.h,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     // ✅ Once data is loaded, build the actual UI
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: isDesktop
-                ? 48.w
-                : isTablet
-                ? 32.w
-                : 16.w,
-            vertical: isSmallScreen ? 12.h : 20.h,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFF8FAFC),
+              const Color(0xFFF1F5F9),
+              const Color(0xFFE2E8F0).withOpacity(0.3),
+            ],
+            stops: const [0.0, 0.6, 1.0],
           ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: isDesktop
-                  ? 800.w
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isLargeScreen
+                  ? 64.w
+                  : isDesktop
+                  ? 48.w
                   : isTablet
-                  ? 600.w
-                  : double.infinity,
+                  ? 32.w
+                  : isExtraSmallScreen
+                  ? 12.w
+                  : 16.w,
+              vertical: isSmallScreen ? 12.h : 20.h,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildProfileSection(isTablet, isDesktop, isSmallScreen),
-                SizedBox(height: isSmallScreen ? 16.h : 24.h),
-                _buildChildrenSection(isTablet, isDesktop, isSmallScreen),
-              ],
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isLargeScreen
+                    ? 1000.w
+                    : isDesktop
+                    ? 800.w
+                    : isTablet
+                    ? 600.w
+                    : double.infinity,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildGamifiedProfileSection(
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                    isLargeScreen,
+                    isExtraSmallScreen,
+                  ),
+                  SizedBox(height: isSmallScreen ? 16.h : 24.h),
+                  _buildGamifiedChildrenSection(
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                    isLargeScreen,
+                    isExtraSmallScreen,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -289,41 +591,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
       bottomNavigationBar: CustomBottomNavigationBar(
         currentIndex: 0,
         onTap: (index) => _onNavTap(context, index),
-      ),
-    );
-  }
-
-  Widget _buildProfileInformation() {
-    return Padding(
-      padding: EdgeInsets.all(20.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Profile Information',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (!_isEditing)
-                TextButton.icon(
-                  onPressed: () => setState(() => _isEditing = true),
-                  icon: Icon(Icons.edit, color: Colors.white, size: 16.sp),
-                  label: Text(
-                    'Edit',
-                    style: TextStyle(color: Colors.white, fontSize: 12.sp),
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          _isEditing ? _buildEditForm() : _buildProfileDetails(),
-        ],
       ),
     );
   }
@@ -393,100 +660,248 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     );
   }
 
-  Widget _buildProfileSection(
+  Widget _buildGamifiedProfileSection(
     bool isTablet,
     bool isDesktop,
     bool isSmallScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
   ) {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF10B981), Color(0xFF8B5CF6)],
+          colors: [
+            Color(0xFF667EEA), // Vibrant blue
+            Color(0xFF764BA2), // Rich purple
+            Color(0xFFF093FB), // Pink accent
+          ],
+          stops: [0.0, 0.6, 1.0],
         ),
-        borderRadius: BorderRadius.circular(isDesktop ? 24.r : 20.r),
+        borderRadius: BorderRadius.circular(
+          isLargeScreen
+              ? 32.r
+              : isDesktop
+              ? 28.r
+              : isTablet
+              ? 24.r
+              : 20.r,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF667EEA).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: const Color(0xFF764BA2).withOpacity(0.2),
+            blurRadius: 40,
+            offset: const Offset(0, 16),
+            spreadRadius: -4,
+          ),
+        ],
       ),
       child: Column(
         children: [
           Padding(
             padding: EdgeInsets.all(
-              isDesktop
+              isLargeScreen
+                  ? 32.w
+                  : isDesktop
                   ? 24.w
                   : isTablet
                   ? 20.w
+                  : isExtraSmallScreen
+                  ? 12.w
                   : 16.w,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Enhanced avatar with glass effect
                 GestureDetector(
                   onTap: _isEditing ? _pickImage : null,
-                  child: CircleAvatar(
-                    radius: isDesktop
-                        ? 40.r
-                        : isTablet
-                        ? 35.r
-                        : isSmallScreen
-                        ? 25.r
-                        : 30.r,
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                    backgroundImage: _selectedImage != null
-                        ? FileImage(_selectedImage!)
-                        : (_parentProfile?.avatar != null
-                                  ? NetworkImage(_parentProfile!.avatar!)
-                                  : null)
-                              as ImageProvider<Object>?,
-                    child:
-                        _selectedImage == null &&
-                            (_parentProfile?.avatar == null)
-                        ? Icon(
-                            Icons.person,
-                            color: Colors.white,
-                            size: isDesktop
-                                ? 40.sp
-                                : isTablet
-                                ? 35.sp
-                                : isSmallScreen
-                                ? 25.sp
-                                : 30.sp,
-                          )
-                        : null,
-                  ),
-                ),
-                SizedBox(width: isDesktop ? 16.w : 12.w),
-                Expanded(
-                  child: Text(
-                    'Hello, ${_parentProfile!.firstName}!',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isDesktop
-                          ? 24.sp
-                          : isTablet
-                          ? 22.sp
-                          : isSmallScreen
-                          ? 16.sp
-                          : 20.sp,
-                      fontWeight: FontWeight.bold,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
+                    child: CircleAvatar(
+                      radius: isLargeScreen
+                          ? 50.r
+                          : isDesktop
+                          ? 45.r
+                          : isTablet
+                          ? 40.r
+                          : isSmallScreen
+                          ? 28.r
+                          : isExtraSmallScreen
+                          ? 25.r
+                          : 35.r,
+                      backgroundColor: Colors.white.withOpacity(0.25),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 2,
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: isLargeScreen
+                              ? 48.r
+                              : isDesktop
+                              ? 43.r
+                              : isTablet
+                              ? 38.r
+                              : isSmallScreen
+                              ? 26.r
+                              : isExtraSmallScreen
+                              ? 23.r
+                              : 33.r,
+                          backgroundColor: Colors.transparent,
+                          backgroundImage: _selectedImage != null
+                              ? FileImage(_selectedImage!)
+                              : (_parentProfile?.avatar != null
+                                        ? NetworkImage(_parentProfile!.avatar!)
+                                        : null)
+                                    as ImageProvider<Object>?,
+                          child:
+                              _selectedImage == null &&
+                                  (_parentProfile?.avatar == null)
+                              ? Icon(
+                                  Icons.person_rounded,
+                                  color: Colors.white,
+                                  size: isLargeScreen
+                                      ? 40.sp
+                                      : isDesktop
+                                      ? 35.sp
+                                      : isTablet
+                                      ? 30.sp
+                                      : isSmallScreen
+                                      ? 18.sp
+                                      : isExtraSmallScreen
+                                      ? 16.sp
+                                      : 25.sp,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(
-                    _isExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: Colors.white,
-                    size: isDesktop
-                        ? 32.sp
-                        : isTablet
-                        ? 30.sp
-                        : isSmallScreen
-                        ? 24.sp
-                        : 28.sp,
+                SizedBox(
+                  width: isLargeScreen
+                      ? 24.w
+                      : isDesktop
+                      ? 20.w
+                      : isTablet
+                      ? 16.w
+                      : isExtraSmallScreen
+                      ? 8.w
+                      : 12.w,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello, ${_parentProfile!.firstName}!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: isLargeScreen
+                              ? 32.sp
+                              : isDesktop
+                              ? 28.sp
+                              : isTablet
+                              ? 26.sp
+                              : isSmallScreen
+                              ? 18.sp
+                              : isExtraSmallScreen
+                              ? 16.sp
+                              : 24.sp,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.2),
+                              offset: const Offset(0, 2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 4.h),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isDesktop ? 12.w : 10.w,
+                          vertical: isDesktop ? 4.h : 3.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(
+                            isDesktop ? 12.r : 10.r,
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'Family Manager',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isDesktop ? 12.sp : 10.sp,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  onPressed: () => setState(() => _isExpanded = !_isExpanded),
+                ),
+                // Enhanced expand button
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(
+                      isDesktop ? 12.r : 10.r,
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: IconButton(
+                    icon: Icon(
+                      _isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: Colors.white,
+                      size: isDesktop
+                          ? 28.sp
+                          : isTablet
+                          ? 26.sp
+                          : isSmallScreen
+                          ? 20.sp
+                          : 24.sp,
+                    ),
+                    onPressed: () => setState(() => _isExpanded = !_isExpanded),
+                  ),
                 ),
               ],
             ),
@@ -657,41 +1072,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     );
   }
 
-  Widget _buildDisplayField({required String label, required String value}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 10.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 12.sp,
-            ),
-          ),
-          SizedBox(height: 4.h),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(8.r),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
-            ),
-            child: Text(
-              value,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
-                fontSize: 12.sp,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildNonEditableField({
     required String label,
     required String value,
@@ -736,10 +1116,12 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     );
   }
 
-  Widget _buildChildrenSection(
+  Widget _buildGamifiedChildrenSection(
     bool isTablet,
     bool isDesktop,
     bool isSmallScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -761,55 +1143,39 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
                 color: Colors.black87,
               ),
             ),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () async {
-                    print(
-                      '=== NAVIGATING TO SETUP CHILD SCREEN (Add Button) ===',
-                    );
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SetupChildScreen(
-                          parentId: _uid,
-                          parentUsername: _parentUsername,
-                        ),
-                      ),
-                    );
-                    print(
-                      '=== RETURNED FROM SETUP CHILD SCREEN (Add Button) ===',
-                    );
-                    print(
-                      'Real-time listener will automatically update the list',
-                    );
-                  },
-                  icon: Icon(
-                    Icons.add_circle_outline,
-                    color: const Color(0xFF8B5CF6),
-                    size: isDesktop
-                        ? 28.sp
-                        : isTablet
-                        ? 26.sp
-                        : isSmallScreen
-                        ? 20.sp
-                        : 24.sp,
+            IconButton(
+              onPressed: () async {
+                print('=== NAVIGATING TO SETUP CHILD SCREEN (Add Button) ===');
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SetupChildScreen(
+                      parentId: _uid,
+                      parentUsername: _parentUsername,
+                    ),
                   ),
-                  tooltip: 'Add Child',
-                ),
-              ],
+                );
+                print('=== RETURNED FROM SETUP CHILD SCREEN (Add Button) ===');
+                print('Real-time listener will automatically update the list');
+              },
+              icon: Icon(
+                Icons.add_circle_outline,
+                color: const Color(0xFF8B5CF6),
+                size: isDesktop ? 28.sp : isTablet ? 26.sp : isSmallScreen ? 20.sp : 24.sp,
+              ),
+              tooltip: 'Add Child',
             ),
           ],
         ),
         SizedBox(
           height: isDesktop
-              ? 16.h
+              ? 20.h
               : isTablet
-              ? 14.h
-              : isSmallScreen
-              ? 10.h
+              ? 16.h
               : 12.h,
         ),
+
+        // Children list or empty state
         if (_children.isEmpty)
           Container(
             width: double.infinity,
@@ -910,8 +1276,10 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    ChildProfileViewScreen(child: child, parentId: _uid),
+                builder: (_) => ChildProfileViewScreen(
+                  child: child,
+                  parentId: _uid,
+                ),
               ),
             );
           },
@@ -920,48 +1288,20 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: isDesktop
-                      ? 30.r
-                      : isTablet
-                      ? 28.r
-                      : isSmallScreen
-                      ? 20.r
-                      : 25.r,
+                  radius: isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r,
                   backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.1),
                   child: child.avatar != null
                       ? ClipOval(
                           child: Image.network(
                             child.avatar!,
-                            width:
-                                (isDesktop
-                                    ? 30.r
-                                    : isTablet
-                                    ? 28.r
-                                    : isSmallScreen
-                                    ? 20.r
-                                    : 25.r) *
-                                2,
-                            height:
-                                (isDesktop
-                                    ? 30.r
-                                    : isTablet
-                                    ? 28.r
-                                    : isSmallScreen
-                                    ? 20.r
-                                    : 25.r) *
-                                2,
+                            width: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
+                            height: (isDesktop ? 30.r : isTablet ? 28.r : isSmallScreen ? 20.r : 25.r) * 2,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stack) {
                               return Text(
                                 child.initial,
                                 style: TextStyle(
-                                  fontSize: isDesktop
-                                      ? 24.sp
-                                      : isTablet
-                                      ? 22.sp
-                                      : isSmallScreen
-                                      ? 16.sp
-                                      : 20.sp,
+                                  fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
                                   fontWeight: FontWeight.bold,
                                   color: const Color(0xFF8B5CF6),
                                 ),
@@ -972,13 +1312,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
                       : Text(
                           child.initial,
                           style: TextStyle(
-                            fontSize: isDesktop
-                                ? 24.sp
-                                : isTablet
-                                ? 22.sp
-                                : isSmallScreen
-                                ? 16.sp
-                                : 20.sp,
+                            fontSize: isDesktop ? 24.sp : isTablet ? 22.sp : isSmallScreen ? 16.sp : 20.sp,
                             fontWeight: FontWeight.bold,
                             color: const Color(0xFF8B5CF6),
                           ),
@@ -992,13 +1326,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
                       Text(
                         child.firstName,
                         style: TextStyle(
-                          fontSize: isDesktop
-                              ? 18.sp
-                              : isTablet
-                              ? 16.sp
-                              : isSmallScreen
-                              ? 14.sp
-                              : 16.sp,
+                          fontSize: isDesktop ? 18.sp : isTablet ? 16.sp : isSmallScreen ? 14.sp : 16.sp,
                           fontWeight: FontWeight.w600,
                           color: Colors.black87,
                         ),
@@ -1007,13 +1335,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
                       Text(
                         child.lastName,
                         style: TextStyle(
-                          fontSize: isDesktop
-                              ? 14.sp
-                              : isTablet
-                              ? 13.sp
-                              : isSmallScreen
-                              ? 11.sp
-                              : 12.sp,
+                          fontSize: isDesktop ? 14.sp : isTablet ? 13.sp : isSmallScreen ? 11.sp : 12.sp,
                           color: Colors.grey[600],
                         ),
                       ),
@@ -1023,326 +1345,322 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
                 Icon(
                   Icons.arrow_forward_ios,
                   color: Colors.grey[400],
-                  size: isDesktop
-                      ? 16.sp
-                      : isTablet
-                      ? 15.sp
-                      : isSmallScreen
-                      ? 12.sp
-                      : 14.sp,
+                  size: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildChildCard(
+  Widget _buildGamifiedChildrenList(
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
+  ) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _children.length,
+      itemBuilder: (context, index) {
+        return _buildGamifiedChildCard(
+          _children[index],
+          isTablet,
+          isDesktop,
+          isSmallScreen,
+          isLargeScreen,
+          isExtraSmallScreen,
+        );
+      },
+    );
+  }
+
+  Widget _buildGamifiedChildCard(
     ChildOption child,
     bool isTablet,
     bool isDesktop,
     bool isSmallScreen,
-    bool isWideScreen,
+    bool isLargeScreen,
+    bool isExtraSmallScreen,
   ) {
-    // Calculate responsive dimensions
-    final cardWidth = isWideScreen
-        ? 140.w
-        : isDesktop
-        ? 120.w
-        : isTablet
-        ? 110.w
-        : isSmallScreen
-        ? 90.w
-        : 100.w;
-    final cardPadding = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 8.w
-        : 10.w;
-    final avatarRadius = isWideScreen
-        ? 40.r
-        : isDesktop
-        ? 35.r
-        : isTablet
-        ? 30.r
-        : isSmallScreen
-        ? 20.r
-        : 25.r;
-    final borderRadius = isWideScreen
-        ? 18.r
-        : isDesktop
-        ? 16.r
-        : isTablet
-        ? 14.r
-        : isSmallScreen
-        ? 10.r
-        : 12.r;
-    final marginRight = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 10.w
-        : 12.w;
-    final spacing = isWideScreen
-        ? 14.h
-        : isDesktop
-        ? 12.h
-        : isTablet
-        ? 10.h
-        : isSmallScreen
-        ? 6.h
-        : 8.h;
-    final nameFontSize = isWideScreen
-        ? 18.sp
-        : isDesktop
-        ? 16.sp
-        : isTablet
-        ? 14.sp
-        : isSmallScreen
-        ? 10.sp
-        : 12.sp;
-    final lastNameFontSize = isWideScreen
-        ? 16.sp
-        : isDesktop
-        ? 14.sp
-        : isTablet
-        ? 12.sp
-        : isSmallScreen
-        ? 8.sp
-        : 10.sp;
-    final initialFontSize = isWideScreen
-        ? 32.sp
-        : isDesktop
-        ? 28.sp
-        : isTablet
-        ? 24.sp
-        : isSmallScreen
-        ? 16.sp
-        : 20.sp;
+    // Mock data for gamification - in real app, this would come from Firebase
+    final childIndex = _children.indexOf(child);
 
     return Container(
-      width: cardWidth,
-      margin: EdgeInsets.only(right: marginRight),
-      child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-        elevation: 2,
-        child: Padding(
-          padding: EdgeInsets.all(cardPadding),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircleAvatar(
-                radius: avatarRadius,
-                backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.1),
-                child: child.avatar != null
-                    ? ClipOval(
-                        child: Image.network(
-                          child.avatar!,
-                          width: avatarRadius * 2,
-                          height: avatarRadius * 2,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stack) {
-                            return Text(
-                              child.initial,
-                              style: TextStyle(
-                                fontSize: initialFontSize,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF8B5CF6),
-                              ),
-                            );
-                          },
-                        ),
-                      )
-                    : Text(
-                        child.initial,
-                        style: TextStyle(
-                          fontSize: initialFontSize,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF8B5CF6),
-                        ),
-                      ),
-              ),
-              SizedBox(height: spacing),
-              Flexible(
-                child: Text(
-                  child.firstName,
-                  style: TextStyle(
-                    fontSize: nameFontSize,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              SizedBox(height: 2.h),
-              Flexible(
-                child: Text(
-                  child.lastName,
-                  style: TextStyle(
-                    fontSize: lastNameFontSize,
-                    color: Colors.grey[600],
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-        ),
+      margin: EdgeInsets.only(
+        bottom: isLargeScreen
+            ? 24.h
+            : isDesktop
+            ? 20.h
+            : isTablet
+            ? 18.h
+            : isSmallScreen
+            ? 12.h
+            : isExtraSmallScreen
+            ? 10.h
+            : 16.h,
       ),
-    );
-  }
-
-  Widget _buildAddChildCard(
-    bool isTablet,
-    bool isDesktop,
-    bool isSmallScreen,
-    bool isWideScreen,
-  ) {
-    // Calculate responsive dimensions
-    final cardWidth = isWideScreen
-        ? 140.w
-        : isDesktop
-        ? 120.w
-        : isTablet
-        ? 110.w
-        : isSmallScreen
-        ? 90.w
-        : 100.w;
-    final cardPadding = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 8.w
-        : 10.w;
-    final iconSize = isWideScreen
-        ? 70.w
-        : isDesktop
-        ? 60.w
-        : isTablet
-        ? 55.w
-        : isSmallScreen
-        ? 40.w
-        : 45.w;
-    final borderRadius = isWideScreen
-        ? 18.r
-        : isDesktop
-        ? 16.r
-        : isTablet
-        ? 14.r
-        : isSmallScreen
-        ? 10.r
-        : 12.r;
-    final marginRight = isWideScreen
-        ? 18.w
-        : isDesktop
-        ? 16.w
-        : isTablet
-        ? 14.w
-        : isSmallScreen
-        ? 10.w
-        : 12.w;
-    final spacing = isWideScreen
-        ? 10.h
-        : isDesktop
-        ? 8.h
-        : isTablet
-        ? 7.h
-        : isSmallScreen
-        ? 4.h
-        : 6.h;
-    final textFontSize = isWideScreen
-        ? 16.sp
-        : isDesktop
-        ? 14.sp
-        : isTablet
-        ? 13.sp
-        : isSmallScreen
-        ? 9.sp
-        : 11.sp;
-    final iconFontSize = isWideScreen
-        ? 32.sp
-        : isDesktop
-        ? 28.sp
-        : isTablet
-        ? 24.sp
-        : isSmallScreen
-        ? 18.sp
-        : 22.sp;
-
-    return Container(
-      width: cardWidth,
-      margin: EdgeInsets.only(right: marginRight),
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(borderRadius),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withOpacity(0.95),
+            Colors.white.withOpacity(0.85),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(
+          isLargeScreen
+              ? 24.r
+              : isDesktop
+              ? 20.r
+              : isTablet
+              ? 18.r
+              : 16.r,
+        ),
+        border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF667EEA).withOpacity(0.08),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.9),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+            spreadRadius: -2,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(isDesktop ? 20.r : 18.r),
         child: InkWell(
-          borderRadius: BorderRadius.circular(borderRadius),
-          onTap: () async {
-            print('=== NAVIGATING TO SETUP CHILD SCREEN (Card) ===');
-            await Navigator.push(
+          borderRadius: BorderRadius.circular(isDesktop ? 20.r : 18.r),
+          onTap: () {
+            Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => SetupChildScreen(
-                  parentId: _uid,
-                  parentUsername: _parentUsername,
-                ),
+                builder: (_) =>
+                    ChildProfileViewScreen(child: child, parentId: _uid),
               ),
             );
-            print('=== RETURNED FROM SETUP CHILD SCREEN (Card) ===');
-            print('Real-time listener will automatically update the list');
           },
-
-          child: Padding(
-            padding: EdgeInsets.all(cardPadding),
+          child: Container(
+            padding: EdgeInsets.all(
+              isLargeScreen
+                  ? 28.w
+                  : isDesktop
+                  ? 24.w
+                  : isTablet
+                  ? 20.w
+                  : isSmallScreen
+                  ? 14.w
+                  : isExtraSmallScreen
+                  ? 12.w
+                  : 18.w,
+            ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: iconSize,
-                  height: iconSize,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.add,
-                    color: const Color(0xFF8B5CF6),
-                    size: iconFontSize,
-                  ),
-                ),
-                SizedBox(height: spacing),
-                Flexible(
-                  child: Text(
-                    'Add Child',
-                    style: TextStyle(
-                      fontSize: textFontSize,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF8B5CF6),
+                Row(
+                  children: [
+                    // Enhanced avatar with glow effect
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF667EEA).withOpacity(0.2),
+                            blurRadius: 15,
+                            offset: const Offset(0, 5),
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: isLargeScreen
+                            ? 40.r
+                            : isDesktop
+                            ? 36.r
+                            : isTablet
+                            ? 32.r
+                            : isSmallScreen
+                            ? 24.r
+                            : isExtraSmallScreen
+                            ? 22.r
+                            : 30.r,
+                        backgroundColor: Colors.transparent,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF667EEA),
+                                const Color(0xFF764BA2),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: child.avatar != null
+                              ? ClipOval(
+                                  child: Image.network(
+                                    child.avatar!,
+                                    width:
+                                        (isDesktop
+                                            ? 36.r
+                                            : isTablet
+                                            ? 32.r
+                                            : isSmallScreen
+                                            ? 28.r
+                                            : 30.r) *
+                                        2,
+                                    height:
+                                        (isDesktop
+                                            ? 36.r
+                                            : isTablet
+                                            ? 32.r
+                                            : isSmallScreen
+                                            ? 28.r
+                                            : 30.r) *
+                                        2,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stack) {
+                                      return Center(
+                                        child: Text(
+                                          child.initial,
+                                          style: TextStyle(
+                                            fontSize: isDesktop
+                                                ? 22.sp
+                                                : isTablet
+                                                ? 20.sp
+                                                : isSmallScreen
+                                                ? 16.sp
+                                                : 18.sp,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    child.initial,
+                                    style: TextStyle(
+                                      fontSize: isDesktop
+                                          ? 22.sp
+                                          : isTablet
+                                          ? 20.sp
+                                          : isSmallScreen
+                                          ? 16.sp
+                                          : 18.sp,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                    SizedBox(width: isDesktop ? 20.w : 16.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            child.firstName,
+                            style: TextStyle(
+                              fontSize: isDesktop
+                                  ? 20.sp
+                                  : isTablet
+                                  ? 18.sp
+                                  : isSmallScreen
+                                  ? 16.sp
+                                  : 17.sp,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF1E293B),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          SizedBox(height: isDesktop ? 4.h : 3.h),
+                          Text(
+                            child.lastName,
+                            style: TextStyle(
+                              fontSize: isDesktop
+                                  ? 14.sp
+                                  : isTablet
+                                  ? 13.sp
+                                  : isSmallScreen
+                                  ? 11.sp
+                                  : 12.sp,
+                              color: const Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Gamified stats badges
+                    // (Removed stats badges)
+                    SizedBox.shrink(),
+                  ],
+                ),
+                SizedBox(height: isDesktop ? 16.h : 14.h),
+
+                // Progress bar
+                SizedBox(height: isDesktop ? 12.h : 10.h),
+                // Action button
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isDesktop ? 16.w : 14.w,
+                    vertical: isDesktop ? 12.h : 10.h,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF667EEA).withOpacity(0.1),
+                        const Color(0xFF764BA2).withOpacity(0.1),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      isDesktop ? 12.r : 10.r,
+                    ),
+                    border: Border.all(
+                      color: const Color(0xFF667EEA).withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.visibility_rounded,
+                        color: const Color(0xFF667EEA),
+                        size: isDesktop ? 16.sp : 14.sp,
+                      ),
+                      SizedBox(width: isDesktop ? 8.w : 6.w),
+                      Text(
+                        'View Profile',
+                        style: TextStyle(
+                          fontSize: isDesktop ? 14.sp : 12.sp,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF667EEA),
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1427,3 +1745,4 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     );
   }
 }
+

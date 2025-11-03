@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,6 +11,7 @@ import '../../models/child_options.dart';
 import '../../widgets/task_card.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import 'parent_profile_screen.dart';
+import 'parent_leaderboard_screen.dart';
 
 class TaskManagementScreen extends StatefulWidget {
   const TaskManagementScreen({super.key});
@@ -24,35 +26,99 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
 
   String selectedUserId = '';
   List<ChildOption> _children = [];
+  Map<String, List<Task>> _currentGroupedTasks = {};
+  StreamSubscription<QuerySnapshot>? _childrenSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadChildren();
+    _setupChildrenListener();
   }
 
-  /// ✅ Load children for parent (by UID)
-  Future<void> _loadChildren() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection("Parents")
-          .doc(_uid)
-          .collection("Children")
-          .get();
+  @override
+  void dispose() {
+    _childrenSubscription?.cancel();
+    super.dispose();
+  }
 
-      setState(() {
-        _children = snap.docs
-            .map((doc) => ChildOption.fromFirestore(doc.id, doc.data()))
-            .where((c) => c.firstName.trim().isNotEmpty)
-            .toList();
+  /// ✅ Set up real-time listener for children
+  void _setupChildrenListener() {
+    print('=== SETTING UP REAL-TIME CHILDREN LISTENER FOR TASK PAGE ===');
+    print('Parent UID: $_uid');
+    
+    _childrenSubscription?.cancel(); // Cancel existing subscription
+    
+    _childrenSubscription = FirebaseFirestore.instance
+        .collection("Parents")
+        .doc(_uid)
+        .collection("Children")
+        .snapshots(includeMetadataChanges: true)
+        .listen(
+          (QuerySnapshot snapshot) {
+            print('=== REAL-TIME UPDATE RECEIVED IN TASK PAGE ===');
+            print('Snapshot size: ${snapshot.docs.length}');
 
-        if (_children.isNotEmpty) {
-          selectedUserId = _children.first.id;
-        }
-      });
-    } catch (e) {
-      _toast('Error loading children: $e', ToastificationType.error);
-    }
+            final allChildren = snapshot.docs
+                .map((doc) {
+                  final childData = doc.data() as Map<String, dynamic>?;
+                  print('Child doc ${doc.id}: data=$childData');
+                  if (childData == null) {
+                    print('⚠️ Child data is null for ${doc.id}');
+                    return null;
+                  }
+                  try {
+                    return ChildOption.fromFirestore(doc.id, childData);
+                  } catch (e) {
+                    print('❌ Error creating ChildOption from ${doc.id}: $e');
+                    return null;
+                  }
+                })
+                .where((c) => c != null)
+                .cast<ChildOption>()
+                .where((c) => c.firstName.trim().isNotEmpty)
+                .toList();
+
+            print('Filtered to ${allChildren.length} children');
+            print('Children names: ${allChildren.map((c) => c.firstName).toList()}');
+
+            if (mounted) {
+              setState(() {
+                _children = allChildren;
+
+                // If no child is selected or selected child no longer exists, select first one
+                if (_children.isNotEmpty) {
+                  if (selectedUserId.isEmpty || 
+                      !_children.any((c) => c.id == selectedUserId)) {
+                    selectedUserId = _children.first.id;
+                    print('Selected child: ${_children.first.firstName} (${selectedUserId})');
+                  }
+                } else {
+                  selectedUserId = '';
+                  print('⚠️ No children found');
+                }
+              });
+              print('=== CHILDREN LIST UPDATED IN TASK PAGE ===');
+              print('New children count: ${_children.length}');
+            } else {
+              print('Widget not mounted, skipping setState');
+            }
+          },
+          onError: (error, stackTrace) {
+            print('❌ Error in children listener (Task Page): $error');
+            print('Stack trace: $stackTrace');
+            if (mounted) {
+              _toast('Error loading children: $error', ToastificationType.error);
+              // Try to re-setup listener after error
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted) {
+                  _setupChildrenListener();
+                }
+              });
+            }
+          },
+        );
+    
+    print('✅ Children listener set up successfully for task page');
   }
 
   /// ✅ Delete task (by UID + selected child)
@@ -121,7 +187,10 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
         _toast('Wishlist coming soon', ToastificationType.info);
         break;
       case 3:
-        _toast('Leaderboard coming soon', ToastificationType.info);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ParentLeaderboardScreen()),
+        );
         break;
     }
   }
@@ -284,8 +353,13 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
   }
 
   int _getTaskCountForStatus(String status) {
-    // This would need to be implemented based on your task grouping logic
-    // For now, returning 0 as placeholder
+    // Make sure data exists
+    if (_currentGroupedTasks.isEmpty) return 0;
+
+    // Match status key safely
+    if (_currentGroupedTasks.containsKey(status)) {
+      return _currentGroupedTasks[status]?.length ?? 0;
+    }
     return 0;
   }
 
@@ -697,11 +771,13 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                                 : null,
                             assignedBy: assignedByRef,
                             completedImagePath: data['completedImagePath'],
+                            isChallenge: data['isChallenge'] ?? false,
                           );
                         }).toList();
 
                         // Group tasks by status
-                        final groupedTasks = _groupTasksByStatus(allTasks);
+                        _currentGroupedTasks = _groupTasksByStatus(allTasks);
+                        final groupedTasks = _currentGroupedTasks;
 
                         return Column(
                           children: [
@@ -842,7 +918,7 @@ class TaskDetailsBottomSheet extends StatefulWidget {
   const TaskDetailsBottomSheet({
     super.key,
     required this.task,
-    required this.childId, // ✅ add this line
+    required this.childId,
   });
 
   @override
@@ -924,13 +1000,6 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
                     ),
                     if (widget.task.completedDate != null) ...[
                       SizedBox(height: screenHeight * 0.01),
-                      Text(
-                        'Completed: ${_formatDate(widget.task.completedDate!)}',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12.sp : 14.sp,
-                          color: const Color(0xFF6B7280),
-                        ),
-                      ),
                     ],
                   ],
                 ),
@@ -958,7 +1027,7 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
                   ),
                   tabs: const [
                     Tab(text: 'Photo'),
-                    Tab(text: 'Priority'),
+                    Tab(text: 'Details'),
                   ],
                 ),
               ),
@@ -1464,132 +1533,170 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
     );
   }
 
+  // ✅ FIXED _approveTask METHOD
   Future<void> _approveTask(Task task) async {
     try {
-      // Show confirmation dialog
-      bool? confirmed = await showDialog<bool>(
+      // Step 1️⃣ Confirm approval
+      final confirmed = await showDialog<bool>(
         context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green),
-                SizedBox(width: 8.w),
-                Text('Approve Task'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Are you sure you want to approve this task?',
-                  style: TextStyle(fontSize: 16.sp),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Task: ${task.taskName}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[700],
-                    fontSize: 14.sp,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Allowance: +${task.allowance.toStringAsFixed(0)} ﷼',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green[600],
-                    fontSize: 14.sp,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel'),
+        builder: (_) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Approve Task'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Are you sure you want to approve this task?'),
+              SizedBox(height: 8),
+              Text(
+                'Task: ${task.taskName}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+              SizedBox(height: 8),
+              Text(
+                'Allowance: +${task.allowance.toStringAsFixed(0)} ﷼',
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
                 ),
-                child: Text('Approve'),
               ),
             ],
-          );
-        },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Approve'),
+            ),
+          ],
+        ),
       );
 
-      if (confirmed == true) {
-        // Show loading dialog
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Approving Task'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16.h),
-                  Text('Updating task status...'),
-                ],
-              ),
-            );
-          },
-        );
+      if (confirmed != true) return;
 
-        // Update task status to done
-        await FirebaseFirestore.instance
-            .collection('Parents')
-            .doc(FirebaseAuth.instance.currentUser!.uid)
-            .collection('Children')
-            .doc(widget.childId)
-            .collection('Tasks')
-            .doc(task.id)
-            .update({
-              'status': 'done',
-              'completedDate': FieldValue.serverTimestamp(),
-            });
-
-        // Close loading dialog
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-
-        // Close task details dialog
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Task approved successfully! +${task.allowance.toStringAsFixed(0)} ﷼ added to child\'s wallet',
-            ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+      // Step 2️⃣ Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AlertDialog(
+          title: Text('Approving Task...'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Updating task status and wallet...'),
+            ],
           ),
-        );
-      }
-    } catch (e) {
-      // Close loading dialog if open
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+        ),
+      );
 
-      // Show error message
+      // Step 3️⃣ Firestore references
+      final parentId = FirebaseAuth.instance.currentUser!.uid;
+      final childRef = FirebaseFirestore.instance
+          .collection('Parents')
+          .doc(parentId)
+          .collection('Children')
+          .doc(widget.childId);
+
+      print(
+        '🔥 APPROVE DEBUG - ParentID: $parentId | ChildID: ${widget.childId}',
+      );
+
+      final taskRef = childRef.collection('Tasks').doc(task.id);
+      final walletDocRef = childRef.collection('Wallet').doc('wallet001');
+
+      // Step 4️⃣ Atomic transaction with FIXED totalBalance update
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final taskSnap = await tx.get(taskRef);
+        final taskData = taskSnap.data() as Map<String, dynamic>?;
+
+        // Avoid double credit if already done
+        if (taskData != null &&
+            (taskData['status']?.toString().toLowerCase() == 'done')) {
+          print('⚠️ DEBUG: Task already approved, skipping balance update.');
+          return;
+        }
+
+        // Get current wallet data
+        final walletSnap = await tx.get(walletDocRef);
+        final walletData = walletSnap.data() as Map<String, dynamic>?;
+
+        if (walletData == null) {
+          // Create new wallet if it doesn't exist
+          print('✅ Creating new wallet with allowance: ${task.allowance}');
+          tx.set(walletDocRef, {
+            'totalBalance': task.allowance,
+            'spendingBalance': 0.0,
+            'savingBalance': 0.0,
+            'savingGoal': 100.0,
+            'userId': widget.childId,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          // ✅ FIX: Update existing wallet - directly calculate and set new totalBalance
+          final currentTotal = (walletData['totalBalance'] ?? 0.0).toDouble();
+          final newTotal = currentTotal + task.allowance;
+
+          print(
+            '✅ Updating wallet: Current=$currentTotal, Adding=${task.allowance}, New=$newTotal',
+          );
+
+          tx.update(walletDocRef, {
+            'totalBalance':
+                newTotal, // ✅ Direct value instead of FieldValue.increment
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        // Mark task as done
+        tx.update(taskRef, {
+          'status': 'done',
+          'completedDate': FieldValue.serverTimestamp(),
+        });
+
+        print('✅ Transaction completed successfully');
+      });
+
+      // Step 5️⃣ Close dialogs
+      if (Navigator.canPop(context)) Navigator.pop(context); // Close loading
+      if (Navigator.canPop(context))
+        Navigator.pop(context); // Close bottom sheet
+
+      // Step 6️⃣ Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error approving task: ${e.toString()}'),
+          content: Text(
+            '✅ Task approved! +${task.allowance.toStringAsFixed(0)} ﷼ added to total wallet.',
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      print('✅ Task approval completed - Total Balance updated');
+    } catch (e, stackTrace) {
+      // Close loading dialog if open
+      if (Navigator.canPop(context)) Navigator.pop(context);
+
+      print('❌ Error approving task: $e');
+      print('Stack trace: $stackTrace');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error approving task: $e'),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -1676,7 +1783,7 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
             .collection('Parents')
             .doc(FirebaseAuth.instance.currentUser!.uid)
             .collection('Children')
-            .doc(widget.childId) // Use the selected child's ID
+            .doc(widget.childId)
             .collection('Tasks')
             .doc(task.id)
             .update({'status': 'rejected'});
@@ -1727,12 +1834,11 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
       case 'low':
         return Colors.green;
       default:
-        return Colors.yellow; // Default to yellow for normal priority
+        return Colors.yellow;
     }
   }
 
   IconData _getPriorityIcon(String priority) {
-    // Always return circle icon - it will be colored based on priority
     return Icons.circle;
   }
 
@@ -2008,3 +2114,4 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
     return '${date.day}/${date.month}/${date.year}';
   }
 }
+

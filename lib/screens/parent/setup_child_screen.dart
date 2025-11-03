@@ -164,15 +164,36 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
         'email': email,
         'pin_hash': pinHash,
         'pin_salt': salt,
-        'pin_display':
-            pin, // Store PIN for parent to view (in real app, consider security implications)
+        'pin_display': pin, // Store PIN for parent to view (in real app, consider security implications)
         'createdAt': FieldValue.serverTimestamp(),
         'active': true,
         'role': 'child',
+        'level': 1, // Start at level 1
+        'completedLessons': [], // Start with no completed lessons
+        'lastCompletedLesson': null,
+        'lastCompletionTime': null,
       };
 
       // 4️⃣ Save child metadata to Firestore
       await childDocRef.set(childData);
+
+      // 4️⃣ Also create child document in main Children collection for lesson system
+      await FirebaseFirestore.instance.collection('Children').doc(childUid).set(
+        {
+          'firstName': firstName,
+          'lastName': '', // Will be updated if needed
+          'email': email,
+          'avatar': '',
+          'QR': '',
+          'parent': FirebaseFirestore.instance
+              .collection('Parents')
+              .doc(widget.parentId),
+          'username': username,
+          'level': 1, // Start at level 1
+          'completedLessons': [], // Start with no completed lessons
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+      );
 
       // 5️⃣ Add username under the parent's "Usernames" subcollection
       await FirebaseFirestore.instance
@@ -194,9 +215,7 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
         ToastificationType.success,
       );
 
-      if (mounted) {
-        Navigator.pop(context, true); // Return true to indicate success
-      }
+      if (mounted) Navigator.pop(context);
     } catch (e) {
       _showToast('Error: $e', ToastificationType.error);
     } finally {
@@ -239,27 +258,7 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
       'userID': childUid,
     });
 
-    // 3️⃣ Wallet — initialize starting balances
-    final walletRef = childRef.collection('Wallet').doc();
-    batch.set(walletRef, {
-      'createdAt': FieldValue.serverTimestamp(),
-      'id': walletRef.id,
-      'savingBalance': 0,
-      'spendingBalance': 0,
-      'totalBalance': 0,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'userId': childUid,
-    });
-
-    // 4️⃣ Wishlist — example placeholder
-    final wishlistRef = childRef.collection('Wishlist').doc();
-    batch.set(wishlistRef, {
-      'createdAt': FieldValue.serverTimestamp(),
-      'itemName': 'Example Item',
-      'itemPrice': 0,
-      'progress': 0,
-      'statuss': 'pending', // 👈 matches your original field name exactly
-    });
+    // 🚫 Removed the Wallet creation block here.
 
     await batch.commit();
   }

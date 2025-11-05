@@ -1303,6 +1303,22 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
   }
 
   Widget _buildCompletedTaskCard(Task task) {
+    // Determine status-based colors, icons, and messages
+    final bool isDone = task.status.toLowerCase() == 'done';
+    final bool isRejected = task.status.toLowerCase() == 'rejected';
+    final Color statusColor = isDone 
+        ? Colors.green 
+        : (isRejected ? Colors.red : Colors.grey);
+    final IconData statusIcon = isDone 
+        ? Icons.check_circle 
+        : (isRejected ? Icons.cancel : Icons.help_outline);
+    final String statusMessage = isDone
+        ? 'Approved by parent • +${task.allowance.toStringAsFixed(0)} ﷼'
+        : (isRejected 
+            ? 'Rejected by parent' 
+            : 'Unknown status');
+    final Color cardColor = Colors.white;
+    
     return Container(
       margin: EdgeInsets.only(bottom: 16),
       padding: EdgeInsets.all(20),
@@ -1311,7 +1327,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: isChallenge
+            color: task.isChallenge
                 ? Colors.amber.withOpacity(0.2)
                 : Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
@@ -1324,7 +1340,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Challenge badge
-          if (isChallenge)
+          if (task.isChallenge)
             Container(
               margin: EdgeInsets.only(bottom: 12),
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1365,12 +1381,10 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
           Container(
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-             // color: Colors.green.withOpacity(0.1),
               color: statusColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            //child: Icon(Icons.check_circle, color: Colors.green, size: 24),
-             child: Icon(statusIcon, color: statusColor, size: 24),
+            child: Icon(statusIcon, color: statusColor, size: 24),
           ),
           SizedBox(width: 16),
           Expanded(
@@ -1406,11 +1420,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                 // 'Approved by parent • +${task.allowance.toStringAsFixed(0)} ﷼',
-                 statusMessage,
+                  statusMessage,
                   style: TextStyle(
                     fontSize: 14,
-                   // color: Colors.green,
                     color: statusColor,
                     fontWeight: FontWeight.w500,
                   ),

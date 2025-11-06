@@ -12,6 +12,7 @@ import '../auth_wrapper.dart';
 import 'setup_child_screen.dart';
 import 'child_profile_view_screen.dart';
 import 'parent_leaderboard_screen.dart';
+import '../services/notification_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
@@ -31,6 +32,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
   bool _isEditing = false;
   bool _isLoadingProfile = true;
   StreamSubscription<QuerySnapshot>? _childrenSubscription;
+  final NotificationService _notificationService = NotificationService();
 
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
@@ -56,12 +58,32 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     _parentProfile = null; // Reset profile when initializing
     _loadParentProfile();
     _setupChildrenListener();
+    
+    // Initialize notifications for the parent role
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ignore: avoid_print
+      print('🎯 PostFrameCallback: Starting parent notification initialization...');
+      _notificationService.initializeForParent(
+        parentId: _uid,
+      ).then((_) {
+        // ignore: avoid_print
+        print('🎯 Parent notification initialization completed');
+      }).catchError((error, stackTrace) {
+        // ignore: avoid_print
+        print('❌ ===== FAILED TO INITIALIZE PARENT NOTIFICATIONS =====');
+        // ignore: avoid_print
+        print('❌ Error: $error');
+        // ignore: avoid_print
+        print('❌ Stack: $stackTrace');
+      });
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _childrenSubscription?.cancel();
+    _notificationService.dispose();
     super.dispose();
   }
 

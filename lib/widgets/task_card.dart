@@ -7,11 +7,15 @@ class TaskCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onTapArrow;
   final VoidCallback? onEdit;
+  final VoidCallback? onApprove;
+  final VoidCallback? onReject;
 
   const TaskCard({
     super.key,
     required this.task,
     this.onDelete,
+    this.onApprove,
+    this.onReject,
     this.onTapArrow,
     this.onEdit,
   });

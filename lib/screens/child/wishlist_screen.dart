@@ -120,10 +120,7 @@ class _WishlistScreenState extends State<WishlistScreen>
           );
         },
       ),
-      bottomNavigationBar: CustomBottomNavigationBar(
-        currentIndex: _navBarIndex,
-        onTap: (index) => _onNavTap(context, index),
-      ),
+      // Bottom navigation is handled by ChildMainWrapper
     );
   }
 
@@ -418,7 +415,7 @@ class _WishlistScreenState extends State<WishlistScreen>
                     ),
                     shape: BoxShape.circle,
                   ),
-                  child: Text('✨', style: TextStyle(fontSize: 80.sp)),
+                  child: Text('⭐', style: TextStyle(fontSize: 80.sp)),
                 ),
                 SizedBox(height: 24.h),
                 Text(
@@ -812,13 +809,13 @@ class _WishlistScreenState extends State<WishlistScreen>
                                   angle:
                                       _sparkleController!.value * 2 * 3.14159,
                                   child: Text(
-                                    '✨',
+                                    '⭐',
                                     style: TextStyle(fontSize: 14.sp),
                                   ),
                                 );
                               },
                             )
-                          : Text('✨', style: TextStyle(fontSize: 14.sp)),
+                          : Text('⭐', style: TextStyle(fontSize: 14.sp)),
                       SizedBox(width: 6.w),
                       Text(
                         "${item.price.toStringAsFixed(2)} SAR",
@@ -1000,7 +997,7 @@ class _WishlistScreenState extends State<WishlistScreen>
                 ),
                 borderRadius: BorderRadius.circular(12.r),
               ),
-              child: Text('✨', style: TextStyle(fontSize: 24.sp)),
+              child: Text('💫', style: TextStyle(fontSize: 24.sp)),
             ),
             SizedBox(width: 12.w),
             Expanded(

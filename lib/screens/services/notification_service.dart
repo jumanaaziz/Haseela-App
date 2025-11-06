@@ -26,8 +26,12 @@ class NotificationService {
   final Map<String, String> _taskStatusCache = {}; // taskId -> previous status
   final Map<String, String> _parentTaskStatusCache = {}; // taskId -> previous status for parent
   final Map<String, StreamSubscription<QuerySnapshot>> _childTaskSubscriptions = {}; // childId -> subscription
+  final Map<String, StreamSubscription<QuerySnapshot>> _childWishlistSubscriptions = {}; // childId -> wishlist subscription
+  final Map<String, bool> _wishlistItemCompletionCache = {}; // wishlistItemId -> isCompleted status
+  final Set<String> _notifiedNewTasks = {}; // Track which new tasks have been notified
   bool _cacheInitialized = false; // Track if cache has been initialized
   bool _parentCacheInitialized = false; // Track if parent cache has been initialized
+  bool _firstSnapshotReceived = false; // Track if first snapshot from listener has been received
 
   Future<void> initializeForChild({
     required String parentId,
@@ -303,6 +307,34 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(childChannel);
       
+      // Channel for task rejections (parent declines)
+      const AndroidNotificationChannel rejectionChannel = AndroidNotificationChannel(
+        'task_rejection_channel',
+        'Task Rejections',
+        description: 'Notifications when parent declines your tasks',
+        importance: Importance.max, // Max importance to always show in notification bar
+        playSound: true,
+      );
+
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(rejectionChannel);
+      
+      // Channel for new task assignments
+      const AndroidNotificationChannel newTaskChannel = AndroidNotificationChannel(
+        'new_task_channel',
+        'New Tasks',
+        description: 'Notifications when parent assigns you a new task',
+        importance: Importance.max, // Max importance to always show in notification bar
+        playSound: true,
+      );
+
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(newTaskChannel);
+      
       // Channel for parent notifications (task completions)
       const AndroidNotificationChannel parentChannel = AndroidNotificationChannel(
         'task_completion_channel',
@@ -316,6 +348,20 @@ class NotificationService {
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(parentChannel);
+      
+      // Channel for wishlist milestone completions (parent notifications)
+      const AndroidNotificationChannel wishlistMilestoneChannel = AndroidNotificationChannel(
+        'wishlist_milestone_channel',
+        'Wishlist Milestones',
+        description: 'Notifications when your child completes a wishlist milestone',
+        importance: Importance.max, // Max importance to always show in notification bar
+        playSound: true,
+      );
+
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(wishlistMilestoneChannel);
       
       // Request notification permission for Android 13+
       final androidImplementation = _localNotifications
@@ -352,7 +398,9 @@ class NotificationService {
 
     _tasksSubscription?.cancel();
     _taskStatusCache.clear(); // Clear cache when reinitializing
+    _notifiedNewTasks.clear(); // Clear notified new tasks cache
     _cacheInitialized = false; // Reset initialization flag
+    _firstSnapshotReceived = false; // Reset first snapshot flag
     
     // First, initialize the cache with current task statuses
     // This prevents false notifications on initial load
@@ -399,7 +447,16 @@ class NotificationService {
         .listen(
       (QuerySnapshot snapshot) {
         // ignore: avoid_print
-        print('📊 Firestore task listener triggered - ${snapshot.docChanges.length} changes (cacheInitialized: $_cacheInitialized)');
+        print('📊 Firestore task listener triggered - ${snapshot.docChanges.length} changes (cacheInitialized: $_cacheInitialized, firstSnapshotReceived: $_firstSnapshotReceived)');
+        // ignore: avoid_print
+        print('   Snapshot metadata: hasPendingWrites=${snapshot.metadata.hasPendingWrites}, isFromCache=${snapshot.metadata.isFromCache}');
+        
+        // IMPORTANT: Track if this is the first snapshot BEFORE processing changes
+        // This way, we can distinguish between initial load (first snapshot) and truly new tasks
+        final isFirstSnapshot = !_firstSnapshotReceived;
+        
+        // ignore: avoid_print
+        print('📊 Processing snapshot: isFirstSnapshot=$isFirstSnapshot, _firstSnapshotReceived=$_firstSnapshotReceived, changes=${snapshot.docChanges.length}');
         
         // If cache not initialized yet, we'll still process but be more careful about notifications
         // This prevents missing changes that happen during initialization
@@ -440,11 +497,19 @@ class NotificationService {
             // Check if status changed from "pending" to "done"
             final isPendingToDone = normalizedOldStatus == 'pending' && normalizedNewStatus == 'done';
             
+            // Check if status changed from "pending" to "rejected" (parent declined)
+            final isPendingToRejected = normalizedOldStatus == 'pending' && normalizedNewStatus == 'rejected';
+            
             // Check if status changed from anything NOT 'done' to 'done'
             // This catches pending->done, rejected->done, or any other->done transitions
             final changedToDone = normalizedOldStatus != 'done' && 
                                   normalizedNewStatus == 'done' && 
                                   normalizedOldStatus.isNotEmpty;
+            
+            // Check if status changed to rejected (parent declined)
+            final changedToRejected = normalizedOldStatus != 'rejected' && 
+                                      normalizedNewStatus == 'rejected' && 
+                                      normalizedOldStatus.isNotEmpty;
             
             // If cache wasn't initialized but task just became done with recent completion, notify
             // This handles the case where a task changes during cache initialization
@@ -468,7 +533,11 @@ class NotificationService {
             // ignore: avoid_print
             print('🔍 isPendingToDone: $isPendingToDone');
             // ignore: avoid_print
+            print('🔍 isPendingToRejected: $isPendingToRejected');
+            // ignore: avoid_print
             print('🔍 changedToDone: $changedToDone (from "$normalizedOldStatus" to "$normalizedNewStatus")');
+            // ignore: avoid_print
+            print('🔍 changedToRejected: $changedToRejected (from "$normalizedOldStatus" to "$normalizedNewStatus")');
             // ignore: avoid_print
             print('🔍 changedToDoneWithoutCache: $changedToDoneWithoutCache');
             // ignore: avoid_print
@@ -481,21 +550,27 @@ class NotificationService {
             print('   _lastNotifiedTaskId: $_lastNotifiedTaskId, taskId: $taskId');
             
             // Notify if: (pending→done) OR (anything→done) OR (changed to done without cache but recent) OR (just became done with recent timestamp and wasn't already done) OR (new done task)
-            final shouldNotify = (isPendingToDone || 
+            final shouldNotifyApproval = (isPendingToDone || 
                                   changedToDone ||
                                   changedToDoneWithoutCache ||
                                   (wasJustCompleted && normalizedOldStatus != 'done') ||
                                   isNewDoneTask) && 
                                  _lastNotifiedTaskId != taskId;
             
-            // ignore: avoid_print
-            print('🔔 shouldNotify: $shouldNotify');
-            // ignore: avoid_print
-            print('   Breakdown: isPendingToDone=$isPendingToDone, changedToDone=$changedToDone, changedToDoneWithoutCache=$changedToDoneWithoutCache, wasJustCompleted=$wasJustCompleted (oldStatus != done: ${normalizedOldStatus != 'done'}), isNewDoneTask=$isNewDoneTask, notAlreadyNotified=${_lastNotifiedTaskId != taskId}');
+            // Notify if task was rejected (parent declined)
+            final shouldNotifyRejection = (isPendingToRejected || changedToRejected) && 
+                                         _lastNotifiedTaskId != taskId;
             
-            if (shouldNotify) {
+            // ignore: avoid_print
+            print('🔔 shouldNotifyApproval: $shouldNotifyApproval');
+            // ignore: avoid_print
+            print('🔔 shouldNotifyRejection: $shouldNotifyRejection');
+            // ignore: avoid_print
+            print('   Breakdown: isPendingToDone=$isPendingToDone, isPendingToRejected=$isPendingToRejected, changedToDone=$changedToDone, changedToRejected=$changedToRejected, changedToDoneWithoutCache=$changedToDoneWithoutCache, wasJustCompleted=$wasJustCompleted (oldStatus != done: ${normalizedOldStatus != 'done'}), isNewDoneTask=$isNewDoneTask, notAlreadyNotified=${_lastNotifiedTaskId != taskId}');
+            
+            if (shouldNotifyApproval) {
               // ignore: avoid_print
-              print('✅ NOTIFICATION TRIGGERED - All conditions met!');
+              print('✅ NOTIFICATION TRIGGERED - Task approved!');
               final taskName = newData['taskName'] ?? 'Your task';
               final allowance = newData['allowance'] as num?;
               
@@ -504,35 +579,122 @@ class NotificationService {
               
               _lastNotifiedTaskId = taskId;
               
-              // Show local notification immediately (ALWAYS WORKS)
+              // Show device notification in notification bar
               final title = 'Task approved! 🎉';
               final body = allowance != null
                   ? '$taskName approved • +${allowance.toInt()} ﷼'
                   : '$taskName was approved';
               
               _showLocalNotification(title: title, body: body);
+            } else if (shouldNotifyRejection) {
+              // ignore: avoid_print
+              print('✅ NOTIFICATION TRIGGERED - Task rejected!');
+              final taskName = newData['taskName'] ?? 'Your task';
               
-              // Also show snackbar if app is in foreground
-              final messenger = AppKeys.scaffoldMessengerKey.currentState;
-              if (messenger != null) {
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text('$title\n$body'),
-                    duration: const Duration(seconds: 4),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
+              // ignore: avoid_print
+              print('⚠️ Task rejected detected via Firestore: $taskName (ID: $taskId)');
+              
+              _lastNotifiedTaskId = taskId;
+              
+              // Show device notification in notification bar
+              final title = 'Task declined ⚠️';
+              final body = '$taskName was declined. Please review and try again.';
+              
+              _showTaskRejectedNotification(title: title, body: body);
             }
           } else if (docChange.type == DocumentChangeType.added) {
-            // Initialize new tasks in cache
+            // New task added by parent
+            final taskId = docChange.doc.id;
             final data = docChange.doc.data() as Map<String, dynamic>;
             final rawStatus = (data['status'] ?? '').toString();
             final normalizedStatus = _normalizeStatus(rawStatus);
-            _taskStatusCache[docChange.doc.id] = normalizedStatus;
+            
+            // Initialize new tasks in cache
+            _taskStatusCache[taskId] = normalizedStatus;
             // ignore: avoid_print
-            print('📋 Added new task ${docChange.doc.id} to cache: "$rawStatus" → "$normalizedStatus"');
+            print('📋 Added new task $taskId to cache: "$rawStatus" → "$normalizedStatus"');
+            
+            // IMPORTANT: If we get a DocumentChangeType.added event, it means this is a NEW document
+            // that was just added to Firestore. So if the status is "new", it's definitely a new assignment.
+            // 
+            // Strategy:
+            // - After first snapshot: Any "added" event with status "new" is a new assignment → notify
+            // - During first snapshot: Only notify if task was created very recently (within 2 minutes)
+            //   This handles edge cases where tasks are added during listener initialization
+            //
+            // Notify if:
+            // 1. This is a "new" task (not already done/pending/rejected)
+            // 2. We haven't already notified about this task
+            // 3. Either:
+            //    - This is NOT the first snapshot (normal case), OR
+            //    - Task was created very recently (within 2 min) - handles race condition
+            final createdAt = data['createdAt'] as Timestamp?;
+            final now = DateTime.now();
+            final isVeryRecentlyCreated = createdAt != null && 
+                createdAt.toDate().isAfter(now.subtract(const Duration(minutes: 2)));
+            
+            final shouldNotifyNewTask = normalizedStatus == 'new' && 
+                !_notifiedNewTasks.contains(taskId) &&
+                (!isFirstSnapshot || isVeryRecentlyCreated);
+            
+            // ignore: avoid_print
+            print('🔍 New task notification check:');
+            // ignore: avoid_print
+            print('   Task ID: $taskId');
+            // ignore: avoid_print
+            print('   normalizedStatus: "$normalizedStatus"');
+            // ignore: avoid_print
+            print('   already notified: ${_notifiedNewTasks.contains(taskId)}');
+            // ignore: avoid_print
+            print('   isFirstSnapshot: $isFirstSnapshot');
+            // ignore: avoid_print
+            print('   first snapshot received: $_firstSnapshotReceived');
+            // ignore: avoid_print
+            print('   cache initialized: $_cacheInitialized');
+            // ignore: avoid_print
+            print('   createdAt: $createdAt');
+            // ignore: avoid_print
+            print('   isVeryRecentlyCreated: $isVeryRecentlyCreated');
+            // ignore: avoid_print
+            print('   shouldNotifyNewTask: $shouldNotifyNewTask');
+            
+            if (shouldNotifyNewTask) {
+              final taskName = data['taskName'] ?? 'A new task';
+              final allowance = data['allowance'] as num?;
+              
+              // ignore: avoid_print
+              print('✅✅✅ NEW TASK NOTIFICATION TRIGGERED - Task: $taskName (ID: $taskId)');
+              
+              // Mark as notified
+              _notifiedNewTasks.add(taskId);
+              
+              // Show device notification in notification bar
+              final title = 'New task assigned! 📋';
+              final body = allowance != null
+                  ? '$taskName • +${allowance.toInt()} ﷼'
+                  : '$taskName';
+              
+              _showNewTaskNotification(title: title, body: body);
+            } else {
+              // ignore: avoid_print
+              print('⚠️ New task notification NOT triggered - check conditions above');
+            }
           }
+        }
+        
+        // Mark first snapshot as received AFTER processing all changes
+        // This ensures we don't notify for initial load documents
+        if (isFirstSnapshot) {
+          // ignore: avoid_print
+          print('📋 First snapshot processed - future "added" events will trigger notifications');
+          _firstSnapshotReceived = true;
+          // Also mark cache as initialized if we have docs
+          if (snapshot.docs.isNotEmpty) {
+            _cacheInitialized = true;
+          }
+        } else {
+          // ignore: avoid_print
+          print('📋 Subsequent snapshot processed - new tasks will trigger notifications');
         }
       },
       onError: (error) {
@@ -629,8 +791,17 @@ class NotificationService {
           subscriptionsToRemove.add(childId);
         }
       }
+      for (var childId in _childWishlistSubscriptions.keys) {
+        if (!currentChildIds.contains(childId)) {
+          _childWishlistSubscriptions[childId]?.cancel();
+          if (!subscriptionsToRemove.contains(childId)) {
+            subscriptionsToRemove.add(childId);
+          }
+        }
+      }
       for (var childId in subscriptionsToRemove) {
         _childTaskSubscriptions.remove(childId);
+        _childWishlistSubscriptions.remove(childId);
       }
       
       // Set up listeners for new children
@@ -642,6 +813,9 @@ class NotificationService {
         // Only set up listener if we don't already have one for this child
         if (!_childTaskSubscriptions.containsKey(childId)) {
           _listenToChildTasks(parentId, childId, childName);
+        }
+        if (!_childWishlistSubscriptions.containsKey(childId)) {
+          _listenToChildWishlist(parentId, childId, childName);
         }
       }
     });
@@ -661,6 +835,9 @@ class NotificationService {
         // Only set up listener if we don't already have one
         if (!_childTaskSubscriptions.containsKey(childId)) {
           _listenToChildTasks(parentId, childId, childName);
+        }
+        if (!_childWishlistSubscriptions.containsKey(childId)) {
+          _listenToChildWishlist(parentId, childId, childName);
         }
       }
     });
@@ -772,6 +949,110 @@ class NotificationService {
     _childTaskSubscriptions[childId] = subscription;
   }
 
+  void _listenToChildWishlist(String parentId, String childId, String childName) {
+    // Cancel existing subscription for this child if any
+    _childWishlistSubscriptions[childId]?.cancel();
+    
+    // First, initialize the cache with current wishlist item completion statuses
+    FirebaseFirestore.instance
+        .collection('Parents')
+        .doc(parentId)
+        .collection('Children')
+        .doc(childId)
+        .collection('Wishlist')
+        .get()
+        .then((wishlistSnapshot) {
+      // ignore: avoid_print
+      print('📋 Initializing wishlist cache with ${wishlistSnapshot.docs.length} items for child $childId');
+      for (var doc in wishlistSnapshot.docs) {
+        final data = doc.data();
+        final isCompleted = data['isCompleted'] ?? false;
+        _wishlistItemCompletionCache[doc.id] = isCompleted as bool;
+        // ignore: avoid_print
+        print('📋 Cached wishlist item ${doc.id}: isCompleted=$isCompleted');
+      }
+      // ignore: avoid_print
+      print('✅ Wishlist cache initialized for child $childId');
+    }).catchError((error) {
+      // ignore: avoid_print
+      print('⚠️ Error initializing wishlist cache: $error');
+    });
+    
+    // Set up a listener for this child's wishlist items
+    final subscription = FirebaseFirestore.instance
+        .collection('Parents')
+        .doc(parentId)
+        .collection('Children')
+        .doc(childId)
+        .collection('Wishlist')
+        .snapshots()
+        .listen(
+      (QuerySnapshot snapshot) {
+        // ignore: avoid_print
+        print('📊 Parent wishlist listener triggered for child $childId - ${snapshot.docChanges.length} changes');
+        
+        // Check for completion status changes
+        for (var docChange in snapshot.docChanges) {
+          // ignore: avoid_print
+          print('📝 Parent wishlist change: ${docChange.type} - ID: ${docChange.doc.id}');
+          
+          if (docChange.type == DocumentChangeType.modified) {
+            final newData = docChange.doc.data() as Map<String, dynamic>;
+            final itemId = docChange.doc.id;
+            
+            // Get field values (handle both naming conventions)
+            final newIsCompleted = newData['isCompleted'] ?? false;
+            final itemPrice = (newData['price'] ?? newData['itemPrice'] ?? 0) as num;
+            
+            // Get previous status from cache BEFORE updating it
+            final oldIsCompleted = _wishlistItemCompletionCache[itemId] ?? false;
+            
+            // Update cache AFTER we've checked the change
+            _wishlistItemCompletionCache[itemId] = newIsCompleted as bool;
+            
+            // ignore: avoid_print
+            print('🔄 Wishlist item $itemId: isCompleted=$oldIsCompleted → $newIsCompleted, price=$itemPrice');
+            
+            // Check if item just became unlocked/completed (milestone achieved)
+            // This happens when the child completes tasks and earns enough to unlock the wishlist item
+            final milestoneCompleted = !oldIsCompleted && newIsCompleted == true;
+            
+            if (milestoneCompleted) {
+              // ignore: avoid_print
+              print('✅ WISHLIST MILESTONE NOTIFICATION TRIGGERED - Child unlocked wishlist item!');
+              final itemName = newData['name'] ?? newData['itemName'] ?? 'A wishlist item';
+              
+              // ignore: avoid_print
+              print('🎉 Wishlist milestone detected via Firestore: $itemName (ID: $itemId) by child: $childName');
+              
+              // Show device notification in notification bar
+              final title = 'Wishlist milestone achieved! 🎉';
+              final body = itemPrice > 0
+                  ? '$childName unlocked "$itemName" (${itemPrice.toInt()} ﷼) - Great responsibility!'
+                  : '$childName unlocked "$itemName" - Great responsibility!';
+              
+              _showWishlistMilestoneNotification(title: title, body: body);
+            }
+          } else if (docChange.type == DocumentChangeType.added) {
+            // Initialize new wishlist items in cache
+            final data = docChange.doc.data() as Map<String, dynamic>;
+            final isCompleted = data['isCompleted'] ?? false;
+            _wishlistItemCompletionCache[docChange.doc.id] = isCompleted as bool;
+            // ignore: avoid_print
+            print('📋 Added new wishlist item ${docChange.doc.id} to cache: isCompleted=$isCompleted');
+          }
+        }
+      },
+      onError: (error) {
+        // ignore: avoid_print
+        print('❌ Error in parent wishlist listener for child $childId: $error');
+      },
+    );
+    
+    // Store the subscription
+    _childWishlistSubscriptions[childId] = subscription;
+  }
+
   Future<void> _showLocalNotification({
     required String title,
     required String body,
@@ -852,6 +1133,138 @@ class NotificationService {
     
     // ignore: avoid_print
     print('🔔 Parent DEVICE notification shown in notification bar: $title - $body');
+  }
+
+  Future<void> _showNewTaskNotification({
+    required String title,
+    required String body,
+  }) async {
+    // Ensure notification always shows as system notification in notification bar
+    // This will appear in the device notification bar when parent assigns a new task
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'new_task_channel',
+      'New Tasks',
+      channelDescription: 'Notifications when parent assigns you a new task',
+      importance: Importance.max, // Maximum importance to always show in notification bar
+      priority: Priority.high,
+      showWhen: true,
+      playSound: true,
+      enableVibration: true,
+      enableLights: true,
+      channelShowBadge: true,
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    // This creates a REAL device notification that appears in the notification bar
+    // It will show even when app is in background or closed
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch % 100000 + 200000, // Different ID range for new task notifications
+      title,
+      body,
+      details,
+      payload: 'new_task_assigned',
+    );
+    
+    // ignore: avoid_print
+    print('🔔 New task DEVICE notification shown in notification bar: $title - $body');
+  }
+
+  Future<void> _showTaskRejectedNotification({
+    required String title,
+    required String body,
+  }) async {
+    // Ensure notification always shows as system notification in notification bar
+    // This will appear in the device notification bar when parent declines a task
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'task_rejection_channel',
+      'Task Rejections',
+      channelDescription: 'Notifications when parent declines your tasks',
+      importance: Importance.max, // Maximum importance to always show in notification bar
+      priority: Priority.high,
+      showWhen: true,
+      playSound: true,
+      enableVibration: true,
+      enableLights: true,
+      channelShowBadge: true,
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    // This creates a REAL device notification that appears in the notification bar
+    // It will show even when app is in background or closed
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch % 100000 + 300000, // Different ID range for rejection notifications
+      title,
+      body,
+      details,
+      payload: 'task_rejected',
+    );
+    
+    // ignore: avoid_print
+    print('🔔 Task rejected DEVICE notification shown in notification bar: $title - $body');
+  }
+
+  Future<void> _showWishlistMilestoneNotification({
+    required String title,
+    required String body,
+  }) async {
+    // Ensure notification always shows as system notification in notification bar
+    // This will appear in the device notification bar when child completes a wishlist milestone
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'wishlist_milestone_channel',
+      'Wishlist Milestones',
+      channelDescription: 'Notifications when your child completes a wishlist milestone',
+      importance: Importance.max, // Maximum importance to always show in notification bar
+      priority: Priority.high,
+      showWhen: true,
+      playSound: true,
+      enableVibration: true,
+      enableLights: true,
+      channelShowBadge: true,
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    // This creates a REAL device notification that appears in the notification bar
+    // It will show even when app is in background or closed
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch % 100000 + 400000, // Different ID range for wishlist notifications
+      title,
+      body,
+      details,
+      payload: 'wishlist_milestone',
+    );
+    
+    // ignore: avoid_print
+    print('🔔 Wishlist milestone DEVICE notification shown in notification bar: $title - $body');
   }
 
   Future<void> _saveToken({
@@ -980,12 +1393,20 @@ class NotificationService {
     }
     _childTaskSubscriptions.clear();
     
+    // Cancel all child wishlist subscriptions
+    for (var subscription in _childWishlistSubscriptions.values) {
+      subscription.cancel();
+    }
+    _childWishlistSubscriptions.clear();
+    
     _fcmForegroundSubscription?.cancel();
     _tokenRefreshSubscription?.cancel();
     _lastNotifiedTaskId = null;
     _lastNotifiedParentTaskId = null;
     _taskStatusCache.clear();
     _parentTaskStatusCache.clear();
+    _wishlistItemCompletionCache.clear();
+    _notifiedNewTasks.clear();
     _cacheInitialized = false;
     _parentCacheInitialized = false;
   }

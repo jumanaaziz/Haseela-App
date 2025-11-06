@@ -22,15 +22,6 @@ class _ChildMainWrapperState extends State<ChildMainWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    final screens = [
-      // Keep state/scroll position per tab
-      const KeyedSubtree(
-        key: PageStorageKey('child_home'),
-        child: SizedBox(), // placeholder; we’ll build below
-      ),
-      const KeyedSubtree(key: PageStorageKey('child_tasks'), child: SizedBox()),
-    ];
-
     // Build screens outside the list so they get correct props
     final home = HomeScreen(
       parentId: widget.parentId,

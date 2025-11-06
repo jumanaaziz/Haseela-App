@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'leaderboard_entry.dart';
 import '../../../widgets/custom_bottom_nav.dart';
 import '../../../models/child.dart';
@@ -10,6 +11,7 @@ import '../child_task_view_screen.dart';
 import '../wishlist_screen.dart';
 import 'dart:async';
 import 'my_badge_view.dart';
+import '../../../services/badge_service.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   final String parentId;
@@ -26,45 +28,98 @@ class LeaderboardScreen extends StatefulWidget {
 }
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
-  List<LeaderboardEntry> _leaderboardData = [];
-  bool _isLoading = true;
+  List<LeaderboardEntry> _weeklyLeaderboardData = [];
+  List<LeaderboardEntry> _monthlyLeaderboardData = [];
+  bool _isLoadingWeekly = true;
+  bool _isLoadingMonthly = true;
   bool _showMyBadge = false;
   bool _isWeekly = true; // Weekly filter selected by default
+  bool _isMonthDropdownOpen = false; // Track dropdown state
+  bool _isChallengeDropdownOpen = false; // Track challenge dropdown state
   final HaseelaService _haseelaService = HaseelaService();
-  Timer? _timer;
-  DateTime? _resetTime;
+  DateTime _selectedMonth = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    1,
+  );
+  List<String> _availableChallenges =
+      []; // List of challenge names for the week
+  String?
+  _selectedChallenge; // Selected challenge name for weekly (null = all challenges)
+  List<String> _availableMonthlyChallenges =
+      []; // List of challenge names for the selected month
+  String?
+  _selectedMonthlyChallenge; // Selected challenge name for monthly (null = all challenges)
 
   @override
   void initState() {
     super.initState();
-    _loadLeaderboardData();
-    _initializeTimer();
-  }
-
-  void _initializeTimer() {
-    // Set reset time to end of week (Sunday 00:00)
-    final now = DateTime.now();
-    final daysUntilSunday = DateTime.sunday - now.weekday;
-    _resetTime = now.add(
-      Duration(days: daysUntilSunday == 0 ? 7 : daysUntilSunday),
-    );
-    _resetTime = DateTime(_resetTime!.year, _resetTime!.month, _resetTime!.day);
-
-    // Update timer every second
-    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
-      if (mounted) setState(() {});
-    });
+    _loadWeeklyLeaderboard();
+    _loadMonthlyLeaderboard();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadLeaderboardData() async {
+  List<LeaderboardEntry> get _leaderboardData {
+    return _isWeekly ? _weeklyLeaderboardData : _monthlyLeaderboardData;
+  }
+
+  bool get _isLoading {
+    return _isWeekly ? _isLoadingWeekly : _isLoadingMonthly;
+  }
+
+  // Normalize DateTime to first day of month at midnight for comparison
+  DateTime _normalizeMonth(DateTime date) {
+    return DateTime(date.year, date.month, 1);
+  }
+
+  // Get list of all months (current year) - normalized
+  List<DateTime> get _availableMonths {
+    final now = DateTime.now();
+    final months = <DateTime>[];
+    // Get all 12 months of the current year
+    for (int month = 1; month <= 12; month++) {
+      months.add(_normalizeMonth(DateTime(now.year, month, 1)));
+    }
+    // Show current month first, then previous months (most recent first), then future months
+    final currentMonth = now.month;
+    final currentMonthDate = _normalizeMonth(
+      DateTime(now.year, currentMonth, 1),
+    );
+    final pastMonths =
+        months.where((m) => m.isBefore(currentMonthDate)).toList()
+          ..sort((a, b) => b.compareTo(a)); // Most recent past month first
+    final futureMonths = months
+        .where((m) => m.isAfter(currentMonthDate))
+        .toList();
+
+    return [currentMonthDate, ...pastMonths, ...futureMonths];
+  }
+
+  String _formatMonth(DateTime date) {
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[date.month - 1];
+  }
+
+  Future<void> _loadWeeklyLeaderboard() async {
     setState(() {
-      _isLoading = true;
+      _isLoadingWeekly = true;
     });
 
     try {
@@ -75,22 +130,141 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
       if (children.isEmpty) {
         setState(() {
-          _leaderboardData = [];
-          _isLoading = false;
+          _weeklyLeaderboardData = [];
+          _availableChallenges = [];
+          _isLoadingWeekly = false;
         });
         return;
       }
 
-      // Calculate data for each child
-      List<LeaderboardEntry> entries = [];
+      // Calculate challenge completions for the week (matching parent leaderboard logic)
+      final now = DateTime.now();
+      var weekStart = now.subtract(Duration(days: now.weekday - 1));
+      weekStart = DateTime(weekStart.year, weekStart.month, weekStart.day);
+
+      // First, collect all unique challenge names from the week
+      Set<String> challengeNamesSet = {};
+      for (final child in children) {
+        final doneTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'done')
+            .get();
+
+        final pendingTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        for (var taskDoc in [
+          ...doneTasksSnapshot.docs,
+          ...pendingTasksSnapshot.docs,
+        ]) {
+          final taskData = taskDoc.data();
+          if (taskData['completedDate'] != null) {
+            final completedDate = (taskData['completedDate'] as Timestamp)
+                .toDate();
+            if (completedDate.isAfter(
+              weekStart.subtract(const Duration(seconds: 1)),
+            )) {
+              final taskName = taskData['taskName'] as String? ?? '';
+              if (taskName.isNotEmpty) {
+                challengeNamesSet.add(taskName);
+              }
+            }
+          }
+        }
+      }
+
+      // Update available challenges list
+      final availableChallenges = challengeNamesSet.toList()..sort();
+      // Use current selected challenge, but reset if it's no longer available
+      String? selectedChallenge = _selectedChallenge;
+      if (selectedChallenge != null &&
+          !availableChallenges.contains(selectedChallenge)) {
+        selectedChallenge = null;
+        print(
+          '⚠️ Selected challenge "$_selectedChallenge" no longer available, resetting',
+        );
+      }
+
+      // Calculate data for each child based on challenge tasks
+      Map<String, Map<String, dynamic>> childDataMap = {};
 
       for (final child in children) {
-        // Get wallet
+        // Get completed challenge tasks (both 'done' and 'pending')
+        final doneTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'done')
+            .get();
+
+        final pendingTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        // Combine both done and pending tasks
+        final allCompletedTasks = [
+          ...doneTasksSnapshot.docs,
+          ...pendingTasksSnapshot.docs,
+        ];
+
+        // Calculate score based on how fast they completed (earliest completion wins)
+        // Filter by selected challenge if one is selected
+        DateTime? earliestCompletion;
+        int completedCount = 0;
+
+        if (allCompletedTasks.isNotEmpty) {
+          for (var taskDoc in allCompletedTasks) {
+            final taskData = taskDoc.data();
+            final taskName = taskData['taskName'] as String? ?? '';
+
+            // If a challenge is selected, only count tasks matching that challenge
+            if (selectedChallenge != null && taskName != selectedChallenge) {
+              continue;
+            }
+
+            if (taskData['completedDate'] != null) {
+              final completedDate = (taskData['completedDate'] as Timestamp)
+                  .toDate();
+              // Check if within last 7 days
+              if (completedDate.isAfter(
+                weekStart.subtract(const Duration(seconds: 1)),
+              )) {
+                if (earliestCompletion == null ||
+                    completedDate.isBefore(earliestCompletion)) {
+                  earliestCompletion = completedDate;
+                }
+                completedCount++;
+              }
+            }
+          }
+        }
+
+        // Get wallet for display
         final wallet = await FirebaseService.getChildWallet(
           widget.parentId,
           child.id,
         );
-
         final totalSaved = wallet?.savingBalance ?? 0.0;
         final totalSpent = wallet?.spendingBalance ?? 0.0;
 
@@ -101,15 +275,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           totalSaved,
         );
 
-        // Get recent purchases (spending transactions)
+        // Get recent purchases
         List<RecentPurchase> spendingTransactions = [];
         try {
           final transactions = await FirebaseService.getChildTransactions(
             widget.parentId,
             child.id,
           );
-
-          // Filter spending transactions and get recent ones
           spendingTransactions = transactions
               .where(
                 (t) =>
@@ -129,57 +301,572 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           print('Error loading transactions: $e');
         }
 
-        // Child name
         final childName = '${child.firstName} ${child.lastName}'.trim();
         if (childName.isEmpty) continue;
 
+        childDataMap[child.id] = {
+          'child': child,
+          'name': childName,
+          'completedCount': completedCount,
+          'earliestCompletion': earliestCompletion ?? DateTime.now(),
+          'totalSaved': totalSaved,
+          'totalSpent': totalSpent,
+          'points': points,
+          'currentLevel': currentLevel,
+          'progress': progress,
+          'recentPurchases': spendingTransactions,
+        };
+      }
+
+      // If a challenge is selected, only include children who completed that challenge
+      final filteredEntries = selectedChallenge != null
+          ? childDataMap.entries.where((entry) {
+              final count = entry.value['completedCount'] as int;
+              return count > 0;
+            }).toList()
+          : childDataMap.entries.toList();
+
+      // First, sort all children alphabetically
+      final sortedEntries = filteredEntries;
+      sortedEntries.sort((a, b) {
+        final aName = a.value['name'] as String;
+        final bName = b.value['name'] as String;
+        return aName.toLowerCase().compareTo(bName.toLowerCase());
+      });
+
+      // Find children who completed challenges and sort by earliest completion time
+      final childrenWithChallenges = sortedEntries.where((entry) {
+        final count = entry.value['completedCount'] as int;
+        return count > 0;
+      }).toList();
+
+      childrenWithChallenges.sort((a, b) {
+        final aDate = a.value['earliestCompletion'] as DateTime;
+        final bDate = b.value['earliestCompletion'] as DateTime;
+        return aDate.compareTo(bDate);
+      });
+
+      // Get first two children who completed challenges
+      final firstCompleter = childrenWithChallenges.isNotEmpty
+          ? childrenWithChallenges[0]
+          : null;
+      final secondCompleter = childrenWithChallenges.length > 1
+          ? childrenWithChallenges[1]
+          : null;
+
+      // Create final sorted list: first two completers first, then rest sorted by rank (points/level)
+      final List<MapEntry<String, Map<String, dynamic>>> finalSorted = [];
+
+      // Add first completer if exists
+      if (firstCompleter != null) {
+        finalSorted.add(firstCompleter);
+      }
+
+      // Add second completer if exists
+      if (secondCompleter != null) {
+        finalSorted.add(secondCompleter);
+      }
+
+      // Add rest of children (excluding first two completers) sorted by rank (points descending, then alphabetically)
+      final remainingChildren = sortedEntries.where((entry) {
+        return entry != firstCompleter && entry != secondCompleter;
+      }).toList();
+
+      remainingChildren.sort((a, b) {
+        final aData = a.value;
+        final bData = b.value;
+        final aPoints = aData['points'] as int;
+        final bPoints = bData['points'] as int;
+
+        // Sort by points (descending)
+        if (bPoints != aPoints) {
+          return bPoints.compareTo(aPoints);
+        }
+        // If same points, sort alphabetically
+        final aName = aData['name'] as String;
+        final bName = bData['name'] as String;
+        return aName.toLowerCase().compareTo(bName.toLowerCase());
+      });
+
+      finalSorted.addAll(remainingChildren);
+
+      // Build LeaderboardEntry list
+      List<LeaderboardEntry> entries = [];
+      for (int i = 0; i < finalSorted.length; i++) {
+        final entry = finalSorted[i];
+        final data = entry.value;
+        final child = data['child'] as Child;
+
         entries.add(
           LeaderboardEntry(
-            id: child.id,
-            name: childName,
+            id: entry.key,
+            name: data['name'] as String,
             avatarUrl: child.avatar.isNotEmpty ? child.avatar : '',
-            totalSaved: totalSaved,
-            totalSpent: totalSpent,
-            points: points,
-            currentLevel: currentLevel,
-            progressToNextLevel: progress,
-            recentPurchases: spendingTransactions,
-            rank: 0, // Will be updated after sorting
+            totalSaved: data['totalSaved'] as double,
+            totalSpent: data['totalSpent'] as double,
+            points: data['points'] as int,
+            currentLevel: data['currentLevel'] as int,
+            progressToNextLevel: data['progress'] as double,
+            recentPurchases: data['recentPurchases'] as List<RecentPurchase>,
+            rank: i + 1,
           ),
         );
       }
 
-      // Sort by total saved (highest first)
-      entries.sort((a, b) => b.totalSaved.compareTo(a.totalSaved));
+      // Check if current child is first place (for Conqueror's Crown badge)
+      if (entries.isNotEmpty &&
+          entries[0].id == widget.childId &&
+          entries[0].rank == 1) {
+        // Check if unique first place (no tie)
+        final firstCount =
+            childDataMap[entries[0].id]!['completedCount'] as int;
+        final secondCount = entries.length > 1
+            ? (childDataMap[entries[1].id]?['completedCount'] as int? ?? 0)
+            : 0;
 
-      // Update ranks
-      for (int i = 0; i < entries.length; i++) {
-        entries[i] = LeaderboardEntry(
-          id: entries[i].id,
-          name: entries[i].name,
-          avatarUrl: entries[i].avatarUrl,
-          totalSaved: entries[i].totalSaved,
-          totalSpent: entries[i].totalSpent,
-          points: entries[i].points,
-          currentLevel: entries[i].currentLevel,
-          progressToNextLevel: entries[i].progressToNextLevel,
-          recentPurchases: entries[i].recentPurchases,
-          rank: i + 1,
-        );
+        if (entries.length == 1 ||
+            (firstCount > secondCount && firstCount > 0)) {
+          BadgeService.checkConquerorsCrown(widget.parentId, widget.childId);
+        }
       }
 
       if (mounted) {
         setState(() {
-          _leaderboardData = entries;
-          _isLoading = false;
+          _weeklyLeaderboardData = entries;
+          _availableChallenges = availableChallenges;
+          _selectedChallenge = selectedChallenge;
+          _isLoadingWeekly = false;
         });
       }
     } catch (e) {
-      print('❌ Error loading leaderboard data: $e');
+      print('❌ Error loading weekly leaderboard data: $e');
       if (mounted) {
         setState(() {
-          _leaderboardData = [];
-          _isLoading = false;
+          _weeklyLeaderboardData = [];
+          _availableChallenges = [];
+          _isLoadingWeekly = false;
+        });
+      }
+    }
+  }
+
+  // Check if the selected month has any challenge tasks
+  Future<bool> _monthHasChallenges(DateTime month) async {
+    try {
+      final monthStart = DateTime(month.year, month.month, 1);
+      final monthEnd = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
+
+      // Get all children
+      final List<Child> children = await _haseelaService.getAllChildren(
+        widget.parentId,
+      );
+
+      // Check if any child has challenge tasks in this month
+      for (final child in children) {
+        final doneTasks = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'done')
+            .get();
+
+        final pendingTasks = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        // Check if any task is completed in this month
+        for (var taskDoc in [...doneTasks.docs, ...pendingTasks.docs]) {
+          final taskData = taskDoc.data();
+          if (taskData['completedDate'] != null) {
+            final completedDate = (taskData['completedDate'] as Timestamp)
+                .toDate();
+            if (completedDate.isAfter(
+                  monthStart.subtract(const Duration(seconds: 1)),
+                ) &&
+                completedDate.isBefore(
+                  monthEnd.add(const Duration(seconds: 1)),
+                )) {
+              return true; // Found at least one challenge in this month
+            }
+          }
+        }
+      }
+      return false; // No challenges found in this month
+    } catch (e) {
+      print('Error checking if month has challenges: $e');
+      return false;
+    }
+  }
+
+  Future<void> _loadMonthlyLeaderboard() async {
+    setState(() {
+      _isLoadingMonthly = true;
+    });
+
+    try {
+      // First, verify that the selected month has challenges
+      final hasChallenges = await _monthHasChallenges(_selectedMonth);
+
+      if (!hasChallenges) {
+        print(
+          '⚠️ Selected month ${_formatMonth(_selectedMonth)} has no challenge tasks',
+        );
+        if (mounted) {
+          setState(() {
+            _monthlyLeaderboardData = [];
+            _availableMonthlyChallenges = [];
+            _selectedMonthlyChallenge = null;
+            _isLoadingMonthly = false;
+          });
+        }
+        return;
+      }
+
+      // Get all children from the same parent
+      final List<Child> children = await _haseelaService.getAllChildren(
+        widget.parentId,
+      );
+
+      if (children.isEmpty) {
+        setState(() {
+          _monthlyLeaderboardData = [];
+          _availableMonthlyChallenges = [];
+          _selectedMonthlyChallenge = null;
+          _isLoadingMonthly = false;
+        });
+        return;
+      }
+
+      // Calculate challenge completions for the selected month (matching parent leaderboard logic)
+      final monthStart = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+      final monthEnd = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + 1,
+        0,
+        23,
+        59,
+        59,
+      );
+
+      // First, collect all unique challenge names from the selected month
+      Set<String> challengeNamesSet = {};
+      for (final child in children) {
+        final doneTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'done')
+            .get();
+
+        final pendingTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        for (var taskDoc in [
+          ...doneTasksSnapshot.docs,
+          ...pendingTasksSnapshot.docs,
+        ]) {
+          final taskData = taskDoc.data();
+          if (taskData['completedDate'] != null) {
+            final completedDate = (taskData['completedDate'] as Timestamp)
+                .toDate();
+            if (completedDate.isAfter(
+                  monthStart.subtract(const Duration(seconds: 1)),
+                ) &&
+                completedDate.isBefore(
+                  monthEnd.add(const Duration(seconds: 1)),
+                )) {
+              final taskName = taskData['taskName'] as String? ?? '';
+              if (taskName.isNotEmpty) {
+                challengeNamesSet.add(taskName);
+              }
+            }
+          }
+        }
+      }
+
+      // Update available challenges list
+      final availableMonthlyChallenges = challengeNamesSet.toList()..sort();
+      // Use current selected challenge, but reset if it's no longer available
+      String? selectedMonthlyChallenge = _selectedMonthlyChallenge;
+      if (selectedMonthlyChallenge != null &&
+          !availableMonthlyChallenges.contains(selectedMonthlyChallenge)) {
+        selectedMonthlyChallenge = null;
+        print(
+          '⚠️ Selected monthly challenge "$_selectedMonthlyChallenge" no longer available, resetting',
+        );
+      }
+
+      // Calculate data for each child based on challenge tasks
+      Map<String, Map<String, dynamic>> childDataMap = {};
+
+      for (final child in children) {
+        // Get completed challenge tasks (both 'done' and 'pending')
+        final doneTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'done')
+            .get();
+
+        final pendingTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        // Combine both done and pending tasks
+        final allCompletedTasks = [
+          ...doneTasksSnapshot.docs,
+          ...pendingTasksSnapshot.docs,
+        ];
+
+        // Calculate score based on how fast they completed (earliest completion wins)
+        // Filter by selected challenge if one is selected
+        DateTime? earliestCompletion;
+        int completedCount = 0;
+
+        if (allCompletedTasks.isNotEmpty) {
+          for (var taskDoc in allCompletedTasks) {
+            final taskData = taskDoc.data();
+            final taskName = taskData['taskName'] as String? ?? '';
+
+            // If a challenge is selected, only count tasks matching that challenge
+            if (selectedMonthlyChallenge != null &&
+                taskName != selectedMonthlyChallenge) {
+              continue;
+            }
+
+            if (taskData['completedDate'] != null) {
+              final completedDate = (taskData['completedDate'] as Timestamp)
+                  .toDate();
+              // Check if within selected month
+              if (completedDate.isAfter(
+                    monthStart.subtract(const Duration(seconds: 1)),
+                  ) &&
+                  completedDate.isBefore(
+                    monthEnd.add(const Duration(seconds: 1)),
+                  )) {
+                if (earliestCompletion == null ||
+                    completedDate.isBefore(earliestCompletion)) {
+                  earliestCompletion = completedDate;
+                }
+                completedCount++;
+              }
+            }
+          }
+        }
+
+        // Get wallet for display
+        final wallet = await FirebaseService.getChildWallet(
+          widget.parentId,
+          child.id,
+        );
+        final totalSaved = wallet?.savingBalance ?? 0.0;
+        final totalSpent = wallet?.spendingBalance ?? 0.0;
+
+        // Calculate points and level
+        final points = LeaderboardEntry.calculatePoints(totalSaved);
+        final currentLevel = LeaderboardEntry.calculateLevel(totalSaved);
+        final progress = LeaderboardEntry.calculateProgressToNextLevel(
+          totalSaved,
+        );
+
+        // Get recent purchases
+        List<RecentPurchase> spendingTransactions = [];
+        try {
+          final transactions = await FirebaseService.getChildTransactions(
+            widget.parentId,
+            child.id,
+          );
+          spendingTransactions = transactions
+              .where(
+                (t) =>
+                    t.type.toLowerCase() == 'spending' &&
+                    t.fromWallet.toLowerCase() == 'spending',
+              )
+              .take(3)
+              .map(
+                (t) => RecentPurchase(
+                  description: t.description,
+                  amount: t.amount,
+                  date: t.date,
+                ),
+              )
+              .toList();
+        } catch (e) {
+          print('Error loading transactions: $e');
+        }
+
+        final childName = '${child.firstName} ${child.lastName}'.trim();
+        if (childName.isEmpty) continue;
+
+        childDataMap[child.id] = {
+          'child': child,
+          'name': childName,
+          'completedCount': completedCount,
+          'earliestCompletion': earliestCompletion ?? DateTime.now(),
+          'totalSaved': totalSaved,
+          'totalSpent': totalSpent,
+          'points': points,
+          'currentLevel': currentLevel,
+          'progress': progress,
+          'recentPurchases': spendingTransactions,
+        };
+      }
+
+      // If a challenge is selected, only include children who completed that challenge
+      final filteredEntries = selectedMonthlyChallenge != null
+          ? childDataMap.entries.where((entry) {
+              final count = entry.value['completedCount'] as int;
+              return count > 0;
+            }).toList()
+          : childDataMap.entries.toList();
+
+      // First, sort all children alphabetically
+      final sortedEntries = filteredEntries;
+      sortedEntries.sort((a, b) {
+        final aName = a.value['name'] as String;
+        final bName = b.value['name'] as String;
+        return aName.toLowerCase().compareTo(bName.toLowerCase());
+      });
+
+      // Find children who completed challenges and sort by earliest completion time
+      final childrenWithChallenges = sortedEntries.where((entry) {
+        final count = entry.value['completedCount'] as int;
+        return count > 0;
+      }).toList();
+
+      childrenWithChallenges.sort((a, b) {
+        final aDate = a.value['earliestCompletion'] as DateTime;
+        final bDate = b.value['earliestCompletion'] as DateTime;
+        return aDate.compareTo(bDate);
+      });
+
+      // Get first two children who completed challenges
+      final firstCompleter = childrenWithChallenges.isNotEmpty
+          ? childrenWithChallenges[0]
+          : null;
+      final secondCompleter = childrenWithChallenges.length > 1
+          ? childrenWithChallenges[1]
+          : null;
+
+      // Create final sorted list: first two completers first, then rest sorted by rank (points/level)
+      final List<MapEntry<String, Map<String, dynamic>>> finalSorted = [];
+
+      // Add first completer if exists
+      if (firstCompleter != null) {
+        finalSorted.add(firstCompleter);
+      }
+
+      // Add second completer if exists
+      if (secondCompleter != null) {
+        finalSorted.add(secondCompleter);
+      }
+
+      // Add rest of children (excluding first two completers) sorted by rank (points descending, then alphabetically)
+      final remainingChildren = sortedEntries.where((entry) {
+        return entry != firstCompleter && entry != secondCompleter;
+      }).toList();
+
+      remainingChildren.sort((a, b) {
+        final aData = a.value;
+        final bData = b.value;
+        final aPoints = aData['points'] as int;
+        final bPoints = bData['points'] as int;
+
+        // Sort by points (descending)
+        if (bPoints != aPoints) {
+          return bPoints.compareTo(aPoints);
+        }
+        // If same points, sort alphabetically
+        final aName = aData['name'] as String;
+        final bName = bData['name'] as String;
+        return aName.toLowerCase().compareTo(bName.toLowerCase());
+      });
+
+      finalSorted.addAll(remainingChildren);
+
+      // Build LeaderboardEntry list
+      List<LeaderboardEntry> entries = [];
+      for (int i = 0; i < finalSorted.length; i++) {
+        final entry = finalSorted[i];
+        final data = entry.value;
+        final child = data['child'] as Child;
+
+        entries.add(
+          LeaderboardEntry(
+            id: entry.key,
+            name: data['name'] as String,
+            avatarUrl: child.avatar.isNotEmpty ? child.avatar : '',
+            totalSaved: data['totalSaved'] as double,
+            totalSpent: data['totalSpent'] as double,
+            points: data['points'] as int,
+            currentLevel: data['currentLevel'] as int,
+            progressToNextLevel: data['progress'] as double,
+            recentPurchases: data['recentPurchases'] as List<RecentPurchase>,
+            rank: i + 1,
+          ),
+        );
+      }
+
+      // Check if current child is first place (for Conqueror's Crown badge)
+      if (entries.isNotEmpty &&
+          entries[0].id == widget.childId &&
+          entries[0].rank == 1) {
+        // Check if unique first place (no tie)
+        final firstCount =
+            childDataMap[entries[0].id]!['completedCount'] as int;
+        final secondCount = entries.length > 1
+            ? (childDataMap[entries[1].id]?['completedCount'] as int? ?? 0)
+            : 0;
+
+        if (entries.length == 1 ||
+            (firstCount > secondCount && firstCount > 0)) {
+          BadgeService.checkConquerorsCrown(widget.parentId, widget.childId);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _monthlyLeaderboardData = entries;
+          _availableMonthlyChallenges = availableMonthlyChallenges;
+          _selectedMonthlyChallenge = selectedMonthlyChallenge;
+          _isLoadingMonthly = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading monthly leaderboard data: $e');
+      if (mounted) {
+        setState(() {
+          _monthlyLeaderboardData = [];
+          _availableMonthlyChallenges = [];
+          _isLoadingMonthly = false;
         });
       }
     }
@@ -219,11 +906,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       parentId: widget.parentId,
                       childId: widget.childId,
                     )
-                  : _leaderboardData.isEmpty
-                  ? _buildEmptyState()
                   : RefreshIndicator(
-                      onRefresh: _loadLeaderboardData,
-                      child: _buildBarChartView(),
+                      onRefresh: _isWeekly
+                          ? _loadWeeklyLeaderboard
+                          : _loadMonthlyLeaderboard,
+                      child: _buildLeaderboardContent(),
                     ),
             ),
           ],
@@ -274,6 +961,63 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
+  Widget _buildLeaderboardContent() {
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      child: Column(
+        children: [
+          SizedBox(height: 16.h),
+          // Filter Buttons - Always visible at top
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20.w),
+            child: Row(
+              children: [
+                _buildFilterButton('Weekly', true),
+                SizedBox(width: 16.w),
+                _buildFilterButton('Month', false),
+              ],
+            ),
+          ),
+
+          // Challenge selector dropdown (only show when weekly view is selected)
+          if (_isWeekly && _availableChallenges.isNotEmpty) ...[
+            SizedBox(height: 16.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              child: _buildChallengeDropdown(),
+            ),
+          ],
+
+          // Month selector dropdown (only show when monthly view is selected)
+          if (!_isWeekly) ...[
+            SizedBox(height: 16.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              child: _buildMonthDropdown(),
+            ),
+          ],
+
+          // Challenge selector dropdown for monthly view (only show when monthly view is selected and challenges are available)
+          if (!_isWeekly && _availableMonthlyChallenges.isNotEmpty) ...[
+            SizedBox(height: 16.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              child: _buildMonthlyChallengeDropdown(),
+            ),
+          ],
+
+          // Show empty state or leaderboard data
+          if (_leaderboardData.isEmpty)
+            _buildEmptyState()
+          else ...[
+            SizedBox(height: 16.h),
+            _buildBarChartView(),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildBarChartView() {
     if (_leaderboardData.isEmpty) return SizedBox.shrink();
 
@@ -284,84 +1028,19 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ? _leaderboardData.skip(3).toList()
         : <LeaderboardEntry>[];
 
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          SizedBox(height: 16.h),
-          // Filter Buttons
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.w),
-            child: Row(
-              children: [
-                _buildFilterButton('Weekly', true),
-                SizedBox(width: 16.w),
-                _buildFilterButton('Month', false),
-                Spacer(),
-                // Timer
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 12.w,
-                    vertical: 6.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF643FDB).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20.r),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 14.sp,
-                        color: const Color(0xFF643FDB),
-                      ),
-                      SizedBox(width: 4.w),
-                      Text(
-                        _getTimeRemaining(),
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF643FDB),
-                          fontFamily: 'SPProText',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 16.h),
-          // User Rank Banner
-          if (_currentUserEntry != null)
-            _buildUserRankBanner(_currentUserEntry!),
-          SizedBox(height: 24.h),
-          // Podium for Top 3
-          if (topThree.isNotEmpty) _buildPodium(topThree),
-          SizedBox(height: 24.h),
-          // List for Rank 4+
-          if (otherPlayers.isNotEmpty) ..._buildOtherPlayersList(otherPlayers),
-          SizedBox(height: 100.h), // Space for bottom nav
-        ],
-      ),
+    return Column(
+      children: [
+        // User Rank Banner
+        if (_currentUserEntry != null) _buildUserRankBanner(_currentUserEntry!),
+        SizedBox(height: 24.h),
+        // Podium for Top 3
+        if (topThree.isNotEmpty) _buildPodium(topThree),
+        SizedBox(height: 24.h),
+        // List for Rank 4+
+        if (otherPlayers.isNotEmpty) ..._buildOtherPlayersList(otherPlayers),
+        SizedBox(height: 100.h), // Space for bottom nav
+      ],
     );
-  }
-
-  String _getTimeRemaining() {
-    if (_resetTime == null) return '00d 00h 00m';
-
-    final now = DateTime.now();
-    if (now.isAfter(_resetTime!)) {
-      _initializeTimer(); // Reset timer
-      return '00d 00h 00m';
-    }
-
-    final difference = _resetTime!.difference(now);
-    final days = difference.inDays;
-    final hours = difference.inHours % 24;
-    final minutes = difference.inMinutes % 60;
-
-    return '${days.toString().padLeft(2, '0')}d ${hours.toString().padLeft(2, '0')}h ${minutes.toString().padLeft(2, '0')}m';
   }
 
   Widget _buildFilterButton(String label, bool isWeeklyButton) {
@@ -370,7 +1049,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       onTap: () {
         setState(() {
           _isWeekly = isWeeklyButton;
+          // Reset challenge selection when switching views
+          if (!isWeeklyButton) {
+            _selectedChallenge = null;
+            _isChallengeDropdownOpen = false;
+          } else {
+            _selectedMonthlyChallenge = null;
+            _isChallengeDropdownOpen = false;
+          }
         });
+        // Reload data when switching views
+        if (isWeeklyButton) {
+          _loadWeeklyLeaderboard();
+        } else {
+          _loadMonthlyLeaderboard();
+        }
       },
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
@@ -964,34 +1657,469 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.people_outline, size: 80.sp, color: Colors.grey[400]),
-          SizedBox(height: 16.h),
-          Text(
-            'No siblings in the list',
-            style: TextStyle(
-              fontSize: 18.sp,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[600],
-              fontFamily: 'SPProText',
+  Widget _buildMonthDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Selected month button (always visible)
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isMonthDropdownOpen = !_isMonthDropdownOpen;
+            });
+          },
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _formatMonth(_selectedMonth),
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF643FDB),
+                      fontFamily: 'SPProText',
+                    ),
+                  ),
+                ),
+                Icon(
+                  _isMonthDropdownOpen
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: const Color(0xFF643FDB),
+                  size: 24.sp,
+                ),
+              ],
             ),
           ),
+        ),
+
+        // Dropdown list (only show when open)
+        if (_isMonthDropdownOpen) ...[
           SizedBox(height: 8.h),
-          Text(
-            'Add more siblings to start competing!',
-            style: TextStyle(
-              fontSize: 14.sp,
-              color: Colors.grey[500],
-              fontFamily: 'SPProText',
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Column(
+              children: _availableMonths.map((DateTime month) {
+                final normalized = _normalizeMonth(month);
+                final selectedNormalized = _normalizeMonth(_selectedMonth);
+                final isSelected = selectedNormalized == normalized;
+
+                return GestureDetector(
+                  onTap: () async {
+                    final newNormalized = _normalizeMonth(month);
+                    final currentSelected = _normalizeMonth(_selectedMonth);
+
+                    // Only load if it's a different month
+                    if (newNormalized != currentSelected) {
+                      setState(() {
+                        _selectedMonth = newNormalized;
+                        _selectedMonthlyChallenge =
+                            null; // Reset challenge when month changes
+                        _isLoadingMonthly = true;
+                        _isMonthDropdownOpen =
+                            false; // Close dropdown after selection
+                        _monthlyLeaderboardData = []; // Clear previous data
+                      });
+                      await _loadMonthlyLeaderboard();
+                    } else {
+                      // Close dropdown even if same month is selected
+                      setState(() {
+                        _isMonthDropdownOpen = false;
+                      });
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 14.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF643FDB).withOpacity(0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      _formatMonth(normalized),
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: isSelected
+                            ? const Color(0xFF643FDB)
+                            : const Color(0xFF1C1243),
+                        fontFamily: 'SPProText',
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
           ),
         ],
-      ),
+      ],
     );
+  }
+
+  Widget _buildChallengeDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Selected challenge button (always visible)
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isChallengeDropdownOpen = !_isChallengeDropdownOpen;
+            });
+          },
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectedChallenge ?? 'Select Challenge',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF643FDB),
+                      fontFamily: 'SPProText',
+                    ),
+                  ),
+                ),
+                Icon(
+                  _isChallengeDropdownOpen
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: const Color(0xFF643FDB),
+                  size: 24.sp,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Dropdown list (only show when open)
+        if (_isChallengeDropdownOpen) ...[
+          SizedBox(height: 8.h),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Column(
+              children: _availableChallenges.map((String challengeName) {
+                final isSelected = _selectedChallenge == challengeName;
+
+                return GestureDetector(
+                  onTap: () async {
+                    setState(() {
+                      _isChallengeDropdownOpen = false;
+                    });
+                    if (_selectedChallenge != challengeName) {
+                      setState(() {
+                        _selectedChallenge = challengeName;
+                      });
+                      await _loadWeeklyLeaderboard();
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 14.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF643FDB).withOpacity(0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      challengeName,
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: isSelected
+                            ? const Color(0xFF643FDB)
+                            : const Color(0xFF1C1243),
+                        fontFamily: 'SPProText',
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMonthlyChallengeDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Selected challenge button (always visible)
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isChallengeDropdownOpen = !_isChallengeDropdownOpen;
+            });
+          },
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectedMonthlyChallenge ?? 'Select Challenge',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF643FDB),
+                      fontFamily: 'SPProText',
+                    ),
+                  ),
+                ),
+                Icon(
+                  _isChallengeDropdownOpen
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: const Color(0xFF643FDB),
+                  size: 24.sp,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Dropdown list (only show when open)
+        if (_isChallengeDropdownOpen) ...[
+          SizedBox(height: 8.h),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Column(
+              children: _availableMonthlyChallenges.map((String challengeName) {
+                final isSelected = _selectedMonthlyChallenge == challengeName;
+
+                return GestureDetector(
+                  onTap: () async {
+                    setState(() {
+                      _isChallengeDropdownOpen = false;
+                    });
+                    if (_selectedMonthlyChallenge != challengeName) {
+                      setState(() {
+                        _selectedMonthlyChallenge = challengeName;
+                      });
+                      await _loadMonthlyLeaderboard();
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 14.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF643FDB).withOpacity(0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      challengeName,
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: isSelected
+                            ? const Color(0xFF643FDB)
+                            : const Color(0xFF1C1243),
+                        fontFamily: 'SPProText',
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    // Different message for weekly vs monthly view
+    if (_isWeekly) {
+      // Check if a challenge is selected
+      if (_selectedChallenge != null) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.emoji_events_outlined,
+                size: 80.sp,
+                color: Colors.grey[400],
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                'No completions for "${_selectedChallenge}"',
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                  fontFamily: 'SPProText',
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'No children have completed this challenge yet',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.grey[500],
+                  fontFamily: 'SPProText',
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      }
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.people_outline, size: 80.sp, color: Colors.grey[400]),
+            SizedBox(height: 16.h),
+            Text(
+              'No siblings in the list',
+              style: TextStyle(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+                fontFamily: 'SPProText',
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'Add more siblings to start competing!',
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.grey[500],
+                fontFamily: 'SPProText',
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Monthly view: show message about no challenges in selected month
+      // Check if a challenge is selected
+      if (_selectedMonthlyChallenge != null) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.emoji_events_outlined,
+                size: 80.sp,
+                color: Colors.grey[400],
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                'No completions for "${_selectedMonthlyChallenge}"',
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                  fontFamily: 'SPProText',
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'No children have completed this challenge in ${_formatMonth(_selectedMonth)}',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.grey[500],
+                  fontFamily: 'SPProText',
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      }
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.emoji_events_outlined,
+              size: 80.sp,
+              color: Colors.grey[400],
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'No challenges in ${_formatMonth(_selectedMonth)}',
+              style: TextStyle(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+                fontFamily: 'SPProText',
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'There were no challenge task completions in this month',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.grey[500],
+                fontFamily: 'SPProText',
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildHeader() {

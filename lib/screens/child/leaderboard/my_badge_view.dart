@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'leaderboard_entry.dart';
 import '../../services/firebase_service.dart';
+import '../../../models/badge.dart' as badge_model;
+import '../../../services/badge_service.dart';
 
 class MyBadgeView extends StatefulWidget {
   final LeaderboardEntry? entry;
@@ -23,11 +25,29 @@ class _MyBadgeViewState extends State<MyBadgeView> {
   LeaderboardEntry? _entry;
   bool _isLoading = true;
   List<RecentPurchase> _allPurchases = [];
+  List<badge_model.Badge> _badges = [];
 
   @override
   void initState() {
     super.initState();
     _loadMyBadgeData();
+    _loadBadges();
+    // Check all badges when screen loads
+    BadgeService.checkAllBadges(widget.parentId, widget.childId);
+  }
+
+  Future<void> _loadBadges() async {
+    try {
+      final badges = await BadgeService.getChildBadges(
+        widget.parentId,
+        widget.childId,
+      );
+      setState(() {
+        _badges = badges;
+      });
+    } catch (e) {
+      print('Error loading badges: $e');
+    }
   }
 
   Future<void> _loadMyBadgeData() async {
@@ -242,132 +262,145 @@ class _MyBadgeViewState extends State<MyBadgeView> {
           ],
           SizedBox(height: 32.h),
 
-          // Stats Cards
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  'Total Saved',
-                  _entry!.totalSaved,
-                  const Color(0xFF47C272),
-                  Icons.account_balance_wallet,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildStatCard(
-                  'Total Spent',
-                  _entry!.totalSpent,
-                  const Color(0xFFFF6B6B),
-                  Icons.shopping_cart,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 32.h),
-
-          // All Purchases Section
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(20.w),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20.r),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10.r,
-                  offset: Offset(0, 4.h),
-                ),
-              ],
+          // Achievement Badges Section
+          Text(
+            'Achievement Badges',
+            style: TextStyle(
+              fontSize: 24.sp,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF1C1243),
+              fontFamily: 'SPProText',
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Purchase History',
-                  style: TextStyle(
-                    fontSize: 20.sp,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1C1243),
-                    fontFamily: 'SPProText',
-                  ),
-                ),
-                SizedBox(height: 16.h),
-                if (_allPurchases.isEmpty)
-                  Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(20.h),
-                      child: Text(
-                        'No purchases yet',
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: Colors.grey[500],
-                          fontFamily: 'SPProText',
-                        ),
-                      ),
+          ),
+          SizedBox(height: 16.h),
+
+          // Badge Grid
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 12.w,
+              mainAxisSpacing: 12.h,
+              childAspectRatio: 0.85,
+            ),
+            itemCount: _badges.length,
+            itemBuilder: (context, index) {
+              final badge = _badges[index];
+              return _buildBadgeCard(badge);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBadgeCard(badge_model.Badge badge) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(
+          color: badge.isUnlocked ? const Color(0xFFFFD700) : Colors.grey[300]!,
+          width: badge.isUnlocked ? 2.w : 1.w,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8.r,
+            offset: Offset(0, 2.h),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Badge Image
+          Container(
+            width: 70.w,
+            height: 70.w,
+            decoration: BoxDecoration(
+              color: badge.isUnlocked
+                  ? Colors.transparent
+                  : Colors.grey[200]!.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            child: badge.isUnlocked
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(12.r),
+                    child: Image.asset(
+                      badge.imageAsset,
+                      width: 70.w,
+                      height: 70.w,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        print('Error loading badge image: ${badge.imageAsset}');
+                        print('Error: $error');
+                        return Container(
+                          color: Colors.grey[200],
+                          child: Icon(
+                            Icons.emoji_events,
+                            size: 40.sp,
+                            color: const Color(0xFFFFD700),
+                          ),
+                        );
+                      },
                     ),
                   )
-                else
-                  ..._allPurchases.map(
-                    (purchase) => Padding(
-                      padding: EdgeInsets.only(bottom: 16.h),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: EdgeInsets.all(12.w),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF3F4F6),
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
-                            child: Icon(
-                              Icons.shopping_bag,
-                              size: 20.sp,
-                              color: const Color(0xFF643FDB),
-                            ),
-                          ),
-                          SizedBox(width: 16.w),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  purchase.description,
-                                  style: TextStyle(
-                                    fontSize: 16.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF1C1243),
-                                    fontFamily: 'SPProText',
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                SizedBox(height: 4.h),
-                                Text(
-                                  purchase.formattedDate,
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: const Color(0xFF6B7280),
-                                    fontFamily: 'SPProText',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            '${purchase.amount.toStringAsFixed(0)} SAR',
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFFFF6B6B),
-                              fontFamily: 'SPProText',
-                            ),
-                          ),
-                        ],
+                : Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12.r),
+                        child: Image.asset(
+                          badge.imageAsset,
+                          width: 70.w,
+                          height: 70.w,
+                          fit: BoxFit.contain,
+                          color: Colors.grey[400],
+                          colorBlendMode: BlendMode.saturation,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.emoji_events,
+                              size: 40.sp,
+                              color: Colors.grey[400],
+                            );
+                          },
+                        ),
                       ),
-                    ),
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: Icon(
+                            Icons.lock,
+                            size: 24.sp,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-              ],
+          ),
+          SizedBox(height: 8.h),
+
+          // Badge Name
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            child: Text(
+              badge.name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.sp,
+                fontWeight: FontWeight.w600,
+                color: badge.isUnlocked
+                    ? const Color(0xFF1C1243)
+                    : Colors.grey[500],
+                fontFamily: 'SPProText',
+              ),
             ),
           ),
         ],

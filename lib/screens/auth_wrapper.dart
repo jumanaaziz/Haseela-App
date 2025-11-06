@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'splash/splash_screen.dart';
 import 'splash/launch_screen_old.dart';
 import 'parent/parent_profile_screen.dart';
-import 'child/child_home_screen.dart';
 import 'child_main_wrapper.dart';
 
 // ✅ Simple Session Service to store role + IDs globally

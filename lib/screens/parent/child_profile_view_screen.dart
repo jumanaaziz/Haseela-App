@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../../models/child_options.dart';
 import '../../models/wallet.dart';
 import '../../models/transaction.dart' as app_transaction;
@@ -24,6 +25,11 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   Map<String, dynamic>? _childDetails;
+  String? _plainPin;
+  bool _isLoadingWallet = false;
+  Wallet? _childWallet;
+  bool _isPinVisible = false;
+  Timer? _pinAutoMaskTimer;
 
   @override
   void initState() {
@@ -47,8 +53,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
       'email': widget.child.email ?? 'N/A',
       'pin_display': '123456', // Default PIN for now
     };
-    
-    
+
     // Also try to load from Firestore in the background
     _loadFromFirestoreInBackground();
   }
@@ -59,7 +64,6 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     super.dispose();
   }
 
-  
   Future<void> _loadFromFirestoreInBackground() async {
     try {
       print('=== LOADING FROM FIRESTORE IN BACKGROUND ===');
@@ -425,10 +429,34 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
                       : 16.h,
                 ),
                 if (_childDetails != null) ...[
-                  _buildInfoRow('First Name', _childDetails!['firstName'] ?? '', isTablet, isDesktop, isSmallScreen),
-                  _buildInfoRow('Username', _childDetails!['username'] ?? '', isTablet, isDesktop, isSmallScreen),
-                  _buildInfoRow('Email', _childDetails!['email'] ?? '', isTablet, isDesktop, isSmallScreen),
-                  _buildInfoRow('PIN', _childDetails!['pin_display'] ?? 'N/A', isTablet, isDesktop, isSmallScreen),
+                  _buildInfoRow(
+                    'First Name',
+                    _childDetails!['firstName'] ?? '',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
+                  _buildInfoRow(
+                    'Username',
+                    _childDetails!['username'] ?? '',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
+                  _buildInfoRow(
+                    'Email',
+                    _childDetails!['email'] ?? '',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
+                  _buildInfoRow(
+                    'PIN',
+                    _childDetails!['pin_display'] ?? 'N/A',
+                    isTablet,
+                    isDesktop,
+                    isSmallScreen,
+                  ),
                 ] else ...[
                   Column(
                     children: [
@@ -589,12 +617,26 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
               ),
             ],
           ),
-          SizedBox(height: isDesktop ? 12.h : isTablet ? 10.h : isSmallScreen ? 8.h : 10.h),
+          SizedBox(
+            height: isDesktop
+                ? 12.h
+                : isTablet
+                ? 10.h
+                : isSmallScreen
+                ? 8.h
+                : 10.h,
+          ),
           Text(
             'This feature will be implemented by your teammate',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: isDesktop ? 16.sp : isTablet ? 15.sp : isSmallScreen ? 12.sp : 14.sp,
+              fontSize: isDesktop
+                  ? 16.sp
+                  : isTablet
+                  ? 15.sp
+                  : isSmallScreen
+                  ? 12.sp
+                  : 14.sp,
               color: Colors.grey[500],
             ),
           ),
@@ -697,7 +739,7 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
 
   String _formatDate(dynamic timestamp) {
     if (timestamp == null) return 'N/A';
-    
+
     try {
       if (timestamp is Timestamp) {
         final date = timestamp.toDate();
@@ -707,5 +749,161 @@ class _ChildProfileViewScreenState extends State<ChildProfileViewScreen>
     } catch (e) {
       return 'N/A';
     }
+  }
+
+  Widget _buildTotalBalanceCard(
+    Wallet wallet,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 24.w
+            : isTablet
+            ? 20.w
+            : 16.w,
+      ),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF643FDB), Color(0xFF8B5CF6)],
+        ),
+        borderRadius: BorderRadius.circular(12.r),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF643FDB).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Total Balance',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: isDesktop
+                  ? 14.sp
+                  : isTablet
+                  ? 13.sp
+                  : isSmallScreen
+                  ? 11.sp
+                  : 12.sp,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            '${wallet.totalBalance.toStringAsFixed(2)} SAR',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isDesktop
+                  ? 32.sp
+                  : isTablet
+                  ? 28.sp
+                  : isSmallScreen
+                  ? 22.sp
+                  : 26.sp,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletDetail(
+    String label,
+    double amount,
+    IconData icon,
+    Color color,
+    bool isTablet,
+    bool isDesktop,
+    bool isSmallScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(
+        isDesktop
+            ? 20.w
+            : isTablet
+            ? 16.w
+            : 14.w,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8.w),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: isDesktop
+                      ? 20.sp
+                      : isTablet
+                      ? 18.sp
+                      : isSmallScreen
+                      ? 14.sp
+                      : 16.sp,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.grey[700],
+                    fontSize: isDesktop
+                        ? 14.sp
+                        : isTablet
+                        ? 13.sp
+                        : isSmallScreen
+                        ? 11.sp
+                        : 12.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            '${amount.toStringAsFixed(2)} SAR',
+            style: TextStyle(
+              color: color,
+              fontSize: isDesktop
+                  ? 24.sp
+                  : isTablet
+                  ? 20.sp
+                  : isSmallScreen
+                  ? 16.sp
+                  : 18.sp,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

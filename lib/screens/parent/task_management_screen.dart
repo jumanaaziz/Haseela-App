@@ -12,6 +12,7 @@ import '../../widgets/task_card.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import 'parent_profile_screen.dart';
 import 'parent_leaderboard_screen.dart';
+import '../../services/badge_service.dart';
 
 class TaskManagementScreen extends StatefulWidget {
   const TaskManagementScreen({super.key});
@@ -45,9 +46,9 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
   void _setupChildrenListener() {
     print('=== SETTING UP REAL-TIME CHILDREN LISTENER FOR TASK PAGE ===');
     print('Parent UID: $_uid');
-    
+
     _childrenSubscription?.cancel(); // Cancel existing subscription
-    
+
     _childrenSubscription = FirebaseFirestore.instance
         .collection("Parents")
         .doc(_uid)
@@ -79,7 +80,9 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                 .toList();
 
             print('Filtered to ${allChildren.length} children');
-            print('Children names: ${allChildren.map((c) => c.firstName).toList()}');
+            print(
+              'Children names: ${allChildren.map((c) => c.firstName).toList()}',
+            );
 
             if (mounted) {
               setState(() {
@@ -87,10 +90,12 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
 
                 // If no child is selected or selected child no longer exists, select first one
                 if (_children.isNotEmpty) {
-                  if (selectedUserId.isEmpty || 
+                  if (selectedUserId.isEmpty ||
                       !_children.any((c) => c.id == selectedUserId)) {
                     selectedUserId = _children.first.id;
-                    print('Selected child: ${_children.first.firstName} (${selectedUserId})');
+                    print(
+                      'Selected child: ${_children.first.firstName} (${selectedUserId})',
+                    );
                   }
                 } else {
                   selectedUserId = '';
@@ -107,7 +112,10 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
             print('❌ Error in children listener (Task Page): $error');
             print('Stack trace: $stackTrace');
             if (mounted) {
-              _toast('Error loading children: $error', ToastificationType.error);
+              _toast(
+                'Error loading children: $error',
+                ToastificationType.error,
+              );
               // Try to re-setup listener after error
               Future.delayed(const Duration(seconds: 2), () {
                 if (mounted) {
@@ -117,7 +125,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
             }
           },
         );
-    
+
     print('✅ Children listener set up successfully for task page');
   }
 
@@ -1685,6 +1693,9 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
       );
 
       print('✅ Task approval completed - Total Balance updated');
+
+      // Step 7️⃣ Check badges after task approval
+      BadgeService.checkTenaciousTaskmaster(parentId, widget.childId);
     } catch (e, stackTrace) {
       // Close loading dialog if open
       if (Navigator.canPop(context)) Navigator.pop(context);
@@ -2114,4 +2125,3 @@ class _EditTaskBottomSheetState extends State<EditTaskBottomSheet> {
     return '${date.day}/${date.month}/${date.year}';
   }
 }
-

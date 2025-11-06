@@ -10,7 +10,8 @@ class ParentLeaderboardScreen extends StatefulWidget {
   const ParentLeaderboardScreen({super.key});
 
   @override
-  State<ParentLeaderboardScreen> createState() => _ParentLeaderboardScreenState();
+  State<ParentLeaderboardScreen> createState() =>
+      _ParentLeaderboardScreenState();
 }
 
 class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
@@ -22,9 +23,14 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
   List<LeaderboardEntry> _monthlyEntries = [];
   bool _isLoadingWeekly = true;
   bool _isLoadingMonthly = true;
-  
+  bool _isMonthDropdownOpen = false; // Track dropdown state
+
   // Month selector for monthly leaderboard - normalize to first day of month at midnight
-  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _selectedMonth = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    1,
+  );
 
   @override
   void initState() {
@@ -32,28 +38,49 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
     _loadWeeklyLeaderboard();
     _loadMonthlyLeaderboard();
   }
-  
+
   // Normalize DateTime to first day of month at midnight for comparison
   DateTime _normalizeMonth(DateTime date) {
     return DateTime(date.year, date.month, 1);
   }
-  
-  // Get list of months (only current year) - normalized
+
+  // Get list of all months (current year) - normalized
   List<DateTime> get _availableMonths {
     final now = DateTime.now();
     final months = <DateTime>[];
-    // Get all months from January to current month of the current year
-    for (int month = 1; month <= now.month; month++) {
+    // Get all 12 months of the current year
+    for (int month = 1; month <= 12; month++) {
       months.add(_normalizeMonth(DateTime(now.year, month, 1)));
     }
-    // Reverse to show current month first
-    return months.reversed.toList();
+    // Show current month first, then previous months (most recent first), then future months
+    final currentMonth = now.month;
+    final currentMonthDate = _normalizeMonth(
+      DateTime(now.year, currentMonth, 1),
+    );
+    final pastMonths =
+        months.where((m) => m.isBefore(currentMonthDate)).toList()
+          ..sort((a, b) => b.compareTo(a)); // Most recent past month first
+    final futureMonths = months
+        .where((m) => m.isAfter(currentMonthDate))
+        .toList();
+
+    return [currentMonthDate, ...pastMonths, ...futureMonths];
   }
-  
+
   String _formatMonth(DateTime date) {
     final months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return months[date.month - 1];
   }
@@ -105,7 +132,9 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
             .where('isChallenge', isEqualTo: true)
             .get();
 
-        print('     Found ${allChallengeTasks.docs.length} challenge task(s) total');
+        print(
+          '     Found ${allChallengeTasks.docs.length} challenge task(s) total',
+        );
 
         // Get completed challenge tasks (both 'done' and 'pending' - pending means child submitted, parent might approve later)
         // We'll filter by completedDate in code since Firestore can't do OR queries easily
@@ -145,22 +174,30 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
         if (allCompletedTasks.isNotEmpty) {
           for (var taskDoc in allCompletedTasks) {
             final taskData = taskDoc.data() as Map<String, dynamic>?;
-            
+
             // Debug: print task details
-            print('     Task ${taskDoc.id}: status=${taskData?['status']}, completedDate=${taskData?['completedDate']}');
-            
+            print(
+              '     Task ${taskDoc.id}: status=${taskData?['status']}, completedDate=${taskData?['completedDate']}',
+            );
+
             if (taskData != null && taskData['completedDate'] != null) {
-              final completedDate = (taskData['completedDate'] as Timestamp).toDate();
-              
+              final completedDate = (taskData['completedDate'] as Timestamp)
+                  .toDate();
+
               // Check if within last 7 days
-              if (completedDate.isAfter(weekStart.subtract(const Duration(seconds: 1)))) {
+              if (completedDate.isAfter(
+                weekStart.subtract(const Duration(seconds: 1)),
+              )) {
                 print('       ✓ Completed within last 7 days: $completedDate');
-                if (earliestCompletion == null || completedDate.isBefore(earliestCompletion)) {
+                if (earliestCompletion == null ||
+                    completedDate.isBefore(earliestCompletion)) {
                   earliestCompletion = completedDate;
                 }
                 completedCount++;
               } else {
-                print('       ✗ Completed outside 7-day window: $completedDate');
+                print(
+                  '       ✗ Completed outside 7-day window: $completedDate',
+                );
               }
             } else {
               print('       ⚠️ No completedDate field');
@@ -169,7 +206,9 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
         }
 
         // Always add entry, even if completedCount is 0
-        print('   ✓ Adding entry: $childName with $completedCount completion(s)');
+        print(
+          '   ✓ Adding entry: $childName with $completedCount completion(s)',
+        );
         entriesMap[childId] = LeaderboardEntry(
           childId: childId,
           childName: childName,
@@ -209,16 +248,98 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
     }
   }
 
+  // Check if the selected month has any challenge tasks
+  Future<bool> _monthHasChallenges(DateTime month) async {
+    try {
+      final monthStart = DateTime(month.year, month.month, 1);
+      final monthEnd = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
+
+      // Get all children
+      final childrenSnapshot = await FirebaseFirestore.instance
+          .collection("Parents")
+          .doc(_uid)
+          .collection("Children")
+          .get();
+
+      // Check if any child has challenge tasks in this month
+      for (var childDoc in childrenSnapshot.docs) {
+        final doneTasks = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(_uid)
+            .collection("Children")
+            .doc(childDoc.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'done')
+            .get();
+
+        final pendingTasks = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(_uid)
+            .collection("Children")
+            .doc(childDoc.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        // Check if any task is completed in this month
+        for (var taskDoc in [...doneTasks.docs, ...pendingTasks.docs]) {
+          final taskData = taskDoc.data();
+          if (taskData['completedDate'] != null) {
+            final completedDate = (taskData['completedDate'] as Timestamp)
+                .toDate();
+            if (completedDate.isAfter(
+                  monthStart.subtract(const Duration(seconds: 1)),
+                ) &&
+                completedDate.isBefore(
+                  monthEnd.add(const Duration(seconds: 1)),
+                )) {
+              return true; // Found at least one challenge in this month
+            }
+          }
+        }
+      }
+      return false; // No challenges found in this month
+    } catch (e) {
+      print('Error checking if month has challenges: $e');
+      return false;
+    }
+  }
+
   /// Load monthly leaderboard (selected month, sorted by count then speed)
   Future<void> _loadMonthlyLeaderboard() async {
     setState(() => _isLoadingMonthly = true);
 
     try {
+      // First, verify that the selected month has challenges
+      final hasChallenges = await _monthHasChallenges(_selectedMonth);
+
+      if (!hasChallenges) {
+        print(
+          '⚠️ Selected month ${_formatMonth(_selectedMonth)} has no challenge tasks',
+        );
+        setState(() {
+          _monthlyEntries = [];
+          _isLoadingMonthly = false;
+        });
+        return;
+      }
+
       // Get start and end of selected month
       final monthStart = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
-      final monthEnd = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0, 23, 59, 59);
-      
-      print('🔍 Loading monthly leaderboard for: ${_formatMonth(_selectedMonth)}');
+      final monthEnd = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + 1,
+        0,
+        23,
+        59,
+        59,
+      );
+
+      print(
+        '🔍 Loading monthly leaderboard for: ${_formatMonth(_selectedMonth)}',
+      );
       print('   Date range: $monthStart to $monthEnd');
 
       // Get all children
@@ -280,13 +401,19 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
           for (var taskDoc in allCompletedTasks) {
             final taskData = taskDoc.data() as Map<String, dynamic>?;
             if (taskData != null && taskData['completedDate'] != null) {
-              final completedDate = (taskData['completedDate'] as Timestamp).toDate();
-              
+              final completedDate = (taskData['completedDate'] as Timestamp)
+                  .toDate();
+
               // Check if within selected month
-              if (completedDate.isAfter(monthStart.subtract(const Duration(seconds: 1))) &&
-                  completedDate.isBefore(monthEnd.add(const Duration(seconds: 1)))) {
+              if (completedDate.isAfter(
+                    monthStart.subtract(const Duration(seconds: 1)),
+                  ) &&
+                  completedDate.isBefore(
+                    monthEnd.add(const Duration(seconds: 1)),
+                  )) {
                 print('       ✓ Completed in selected month: $completedDate');
-                if (earliestCompletion == null || completedDate.isBefore(earliestCompletion)) {
+                if (earliestCompletion == null ||
+                    completedDate.isBefore(earliestCompletion)) {
                   earliestCompletion = completedDate;
                 }
                 completedCount++;
@@ -349,9 +476,9 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
         break;
       case 2:
         // Wishlist - placeholder
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Wishlist coming soon')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Wishlist coming soon')));
         break;
       case 3:
         // Already on Leaderboard
@@ -477,10 +604,7 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16.r),
-            border: Border.all(
-              color: const Color(0xFFE2E8F0),
-              width: 1,
-            ),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
           ),
           child: Column(
             children: [
@@ -520,19 +644,127 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
           _buildTopThreeLeaderboard(_weeklyEntries),
           if (_weeklyEntries.length > 3) ...[
             SizedBox(height: 24.h),
-            ...List.generate(
-              _weeklyEntries.length - 3,
-              (index) {
-                final entry = _weeklyEntries[index + 3];
-                return _buildLeaderboardItem(
-                  entry: entry,
-                  rank: index + 4,
-                );
-              },
-            ),
+            ...List.generate(_weeklyEntries.length - 3, (index) {
+              final entry = _weeklyEntries[index + 3];
+              return _buildLeaderboardItem(entry: entry, rank: index + 4);
+            }),
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildMonthSelectorList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Selected month button (always visible)
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isMonthDropdownOpen = !_isMonthDropdownOpen;
+            });
+          },
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _formatMonth(_selectedMonth),
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF7C3AED),
+                    ),
+                  ),
+                ),
+                Icon(
+                  _isMonthDropdownOpen
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: const Color(0xFF7C3AED),
+                  size: 24.sp,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Dropdown list (only show when open)
+        if (_isMonthDropdownOpen) ...[
+          SizedBox(height: 8.h),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Column(
+              children: _availableMonths.map((DateTime month) {
+                final normalized = _normalizeMonth(month);
+                final selectedNormalized = _normalizeMonth(_selectedMonth);
+                final isSelected = selectedNormalized == normalized;
+
+                return GestureDetector(
+                  onTap: () async {
+                    final newNormalized = _normalizeMonth(month);
+                    final currentSelected = _normalizeMonth(_selectedMonth);
+
+                    // Only load if it's a different month
+                    if (newNormalized != currentSelected) {
+                      setState(() {
+                        _selectedMonth = newNormalized;
+                        _isLoadingMonthly = true;
+                        _isMonthDropdownOpen =
+                            false; // Close dropdown after selection
+                        _monthlyEntries = []; // Clear previous data
+                      });
+                      await _loadMonthlyLeaderboard();
+                    } else {
+                      // Close dropdown even if same month is selected
+                      setState(() {
+                        _isMonthDropdownOpen = false;
+                      });
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 14.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF7C3AED).withOpacity(0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      _formatMonth(normalized),
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: isSelected
+                            ? const Color(0xFF7C3AED)
+                            : const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -542,52 +774,11 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Month selector dropdown
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.r),
-              border: Border.all(
-                color: const Color(0xFFE2E8F0),
-                width: 1.5,
-              ),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<DateTime>(
-                value: _normalizeMonth(_selectedMonth),
-                isExpanded: true,
-                icon: Icon(
-                  Icons.arrow_drop_down,
-                  color: const Color(0xFF7C3AED),
-                  size: 28.sp,
-                ),
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-                items: _availableMonths.map((DateTime month) {
-                  final normalized = _normalizeMonth(month);
-                  return DropdownMenuItem<DateTime>(
-                    value: normalized,
-                    child: Text(_formatMonth(normalized)),
-                  );
-                }).toList(),
-                onChanged: (DateTime? newMonth) {
-                  if (newMonth != null) {
-                    setState(() {
-                      _selectedMonth = _normalizeMonth(newMonth);
-                    });
-                    _loadMonthlyLeaderboard();
-                  }
-                },
-              ),
-            ),
-          ),
-          
+          // Month selector list
+          _buildMonthSelectorList(),
+
           SizedBox(height: 24.h),
-          
+
           // Leaderboard content
           if (_isLoadingMonthly)
             Center(
@@ -600,64 +791,55 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                 ),
               ),
             )
-           else if (_monthlyEntries.isEmpty)
-             Container(
-               padding: EdgeInsets.all(32.w),
-               decoration: BoxDecoration(
-                 color: Colors.white,
-                 borderRadius: BorderRadius.circular(16.r),
-                 border: Border.all(
-                   color: const Color(0xFFE2E8F0),
-                   width: 1,
-                 ),
-               ),
-               child: Column(
-                 mainAxisAlignment: MainAxisAlignment.center,
-                 crossAxisAlignment: CrossAxisAlignment.center,
-                 children: [
-                   Icon(
-                     Icons.emoji_events_outlined,
-                     size: 64.sp,
-                     color: const Color(0xFF94A3B8),
-                   ),
-                   SizedBox(height: 16.h),
-                   Text(
-                     'No challenge tasks in ${_formatMonth(_selectedMonth)}',
-                     textAlign: TextAlign.center,
-                     style: TextStyle(
-                       fontSize: 18.sp,
-                       fontWeight: FontWeight.w600,
-                       color: const Color(0xFF1E293B),
-                     ),
-                   ),
-                   SizedBox(height: 8.h),
-                   Text(
-                     'There were no challenge task completions in this month',
-                     textAlign: TextAlign.center,
-                     style: TextStyle(
-                       fontSize: 14.sp,
-                       color: const Color(0xFF64748B),
-                     ),
-                   ),
-                 ],
-               ),
-             )
+          else if (_monthlyEntries.isEmpty)
+            Container(
+              padding: EdgeInsets.all(32.w),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16.r),
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.emoji_events_outlined,
+                    size: 64.sp,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    'No challenge tasks in ${_formatMonth(_selectedMonth)}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    'There were no challenge task completions in this month',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            )
           else
             Column(
               children: [
                 _buildTopThreeLeaderboard(_monthlyEntries),
                 if (_monthlyEntries.length > 3) ...[
                   SizedBox(height: 24.h),
-                  ...List.generate(
-                    _monthlyEntries.length - 3,
-                    (index) {
-                      final entry = _monthlyEntries[index + 3];
-                      return _buildLeaderboardItem(
-                        entry: entry,
-                        rank: index + 4,
-                      );
-                    },
-                  ),
+                  ...List.generate(_monthlyEntries.length - 3, (index) {
+                    final entry = _monthlyEntries[index + 3];
+                    return _buildLeaderboardItem(entry: entry, rank: index + 4);
+                  }),
                 ],
               ],
             ),
@@ -734,10 +916,7 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                         decoration: BoxDecoration(
                           color: const Color(0xFFC0C0C0), // Silver color
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 3,
-                          ),
+                          border: Border.all(color: Colors.white, width: 3),
                           boxShadow: [
                             BoxShadow(
                               color: const Color(0xFFC0C0C0).withOpacity(0.6),
@@ -780,10 +959,7 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                       decoration: BoxDecoration(
                         color: Colors.amber,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 3,
-                        ),
+                        border: Border.all(color: Colors.white, width: 3),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.amber.withOpacity(0.6),
@@ -825,10 +1001,7 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                         decoration: BoxDecoration(
                           color: const Color(0xFFCD7F32), // Bronze color
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 3,
-                          ),
+                          border: Border.all(color: Colors.white, width: 3),
                           boxShadow: [
                             BoxShadow(
                               color: const Color(0xFFCD7F32).withOpacity(0.6),
@@ -869,7 +1042,9 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
       padding: EdgeInsets.only(
         left: 6.w,
         right: 6.w,
-        top: isFirst ? 18.h : 18.h, // Extra top padding for all top 3 to make room for medals
+        top: isFirst
+            ? 18.h
+            : 18.h, // Extra top padding for all top 3 to make room for medals
         bottom: 10.h,
       ),
       decoration: BoxDecoration(
@@ -904,7 +1079,7 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
               ),
             ),
           ),
-          
+
           // Avatar
           Flexible(
             child: CircleAvatar(
@@ -915,8 +1090,8 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                   : null,
               child: entry.childAvatar == null
                   ? Text(
-                      entry.childName.isNotEmpty 
-                          ? entry.childName[0].toUpperCase() 
+                      entry.childName.isNotEmpty
+                          ? entry.childName[0].toUpperCase()
                           : '?',
                       style: TextStyle(
                         fontSize: isFirst ? 22.sp : 18.sp,
@@ -927,7 +1102,7 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                   : null,
             ),
           ),
-          
+
           // Name and Score section
           Flexible(
             child: Column(
@@ -993,10 +1168,7 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -1030,8 +1202,8 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                 : null,
             child: entry.childAvatar == null
                 ? Text(
-                    entry.childName.isNotEmpty 
-                        ? entry.childName[0].toUpperCase() 
+                    entry.childName.isNotEmpty
+                        ? entry.childName[0].toUpperCase()
                         : '?',
                     style: TextStyle(
                       fontSize: 16.sp,

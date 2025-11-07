@@ -15,6 +15,8 @@ import 'parent_leaderboard_screen.dart';
 import '../services/notification_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'parent_wishlist_screen.dart';
+import 'package:firebase_performance/firebase_performance.dart';
 
 class ParentProfileScreen extends StatefulWidget {
   const ParentProfileScreen({super.key});
@@ -98,6 +100,14 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
   // Set up real-time listener for children
   void _setupChildrenListener() {
     print('=== SETTING UP REAL-TIME CHILDREN LISTENER ===');
+
+    // ✅ Start performance trace when listener is created
+    final trace = FirebasePerformance.instance.newTrace(
+      "setup_children_listener",
+    );
+    trace.start();
+    bool traceStopped = false; // Prevent multiple stops for continuous updates
+
     _childrenSubscription = FirebaseFirestore.instance
         .collection("Parents")
         .doc(_uid)
@@ -106,20 +116,23 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
           includeMetadataChanges: true,
         ) // Include metadata changes to catch all updates
         .listen(
-          (QuerySnapshot snapshot) {
+          (QuerySnapshot snapshot) async {
             print('=== REAL-TIME UPDATE RECEIVED ===');
             print('Snapshot size: ${snapshot.docs.length}');
+
+            // ✅ Stop the trace only once (after the first snapshot)
+            if (!traceStopped) {
+              await trace.stop();
+              traceStopped = true;
+              print("✅ Firebase trace 'setup_children_listener' stopped.");
+            }
 
             final childrenList = snapshot.docs
                 .map((doc) {
                   print('Processing child doc: ${doc.id}');
-                  print('Child data: ${doc.data()}');
                   final childOption = ChildOption.fromFirestore(
                     doc.id,
                     doc.data() as Map<String, dynamic>,
-                  );
-                  print(
-                    'Created ChildOption: ID=${childOption.id}, firstName=${childOption.firstName}',
                   );
                   return childOption;
                 })
@@ -143,20 +156,24 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
               });
               print('=== CHILDREN LIST UPDATED IN REAL-TIME ===');
               print('New children count: ${_children.length}');
-              print(
-                'Children in state: ${_children.map((c) => c.firstName).toList()}',
-              );
             } else {
               print('Widget not mounted, skipping setState');
             }
           },
-          onError: (error) {
+          onError: (error) async {
             print('Error in children listener: $error');
             if (mounted) {
               _showToast(
                 'Error loading children: $error',
                 ToastificationType.error,
               );
+            }
+
+            // ✅ Always stop the trace on error too
+            if (!traceStopped) {
+              await trace.stop();
+              traceStopped = true;
+              print("❌ Trace stopped due to error.");
             }
           },
         );
@@ -446,7 +463,12 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
         );
         break;
       case 2:
-        _showToast('Wishlist coming soon', ToastificationType.info);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ParentWishlistScreen(parentId: _uid),
+          ),
+        );
         break;
       case 3:
         Navigator.pushReplacement(

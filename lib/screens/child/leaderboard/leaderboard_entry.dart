@@ -9,7 +9,7 @@ class LeaderboardEntry {
   final double progressToNextLevel; // Progress to next badge (0.0 to 1.0)
   final List<RecentPurchase> recentPurchases; // Recent purchases
   final int rank;
-
+  // test
   LeaderboardEntry({
     required this.id,
     required this.name,

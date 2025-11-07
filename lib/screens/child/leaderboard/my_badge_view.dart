@@ -78,13 +78,17 @@ class _MyBadgeViewState extends State<MyBadgeView> {
           widget.parentId,
           widget.childId,
         );
+        final spendingTransactions =
+            transactions
+                .where(
+                  (t) =>
+                      t.type.toLowerCase() == 'spending' &&
+                      t.fromWallet.toLowerCase() == 'spending',
+                )
+                .toList()
+              ..sort((a, b) => b.date.compareTo(a.date));
 
-        _allPurchases = transactions
-            .where(
-              (t) =>
-                  t.type.toLowerCase() == 'spending' &&
-                  t.fromWallet.toLowerCase() == 'spending',
-            )
+        _allPurchases = spendingTransactions
             .map(
               (t) => RecentPurchase(
                 description: t.description,
@@ -325,7 +329,9 @@ class _MyBadgeViewState extends State<MyBadgeView> {
                   : Colors.grey[200]!.withOpacity(0.5),
               borderRadius: BorderRadius.circular(12.r),
             ),
-            child: badge.isUnlocked
+            child: badge.imageAsset.isEmpty
+                ? _buildDefaultBadgeIcon(badge.isUnlocked)
+                : badge.isUnlocked
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(12.r),
                     child: Image.asset(
@@ -336,14 +342,7 @@ class _MyBadgeViewState extends State<MyBadgeView> {
                       errorBuilder: (context, error, stackTrace) {
                         print('Error loading badge image: ${badge.imageAsset}');
                         print('Error: $error');
-                        return Container(
-                          color: Colors.grey[200],
-                          child: Icon(
-                            Icons.emoji_events,
-                            size: 40.sp,
-                            color: const Color(0xFFFFD700),
-                          ),
-                        );
+                        return _buildDefaultBadgeIcon(true);
                       },
                     ),
                   )
@@ -359,11 +358,7 @@ class _MyBadgeViewState extends State<MyBadgeView> {
                           color: Colors.grey[400],
                           colorBlendMode: BlendMode.saturation,
                           errorBuilder: (context, error, stackTrace) {
-                            return Icon(
-                              Icons.emoji_events,
-                              size: 40.sp,
-                              color: Colors.grey[400],
-                            );
+                            return _buildDefaultBadgeIcon(false);
                           },
                         ),
                       ),
@@ -476,5 +471,21 @@ class _MyBadgeViewState extends State<MyBadgeView> {
       const Color(0xFF643FDB),
     ];
     return level < colors.length ? colors[level] : colors[colors.length - 1];
+  }
+
+  Widget _buildDefaultBadgeIcon(bool isUnlocked) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isUnlocked
+            ? const Color(0xFFFFD700).withOpacity(0.2)
+            : Colors.grey[200],
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        Icons.emoji_events,
+        size: 40.sp,
+        color: isUnlocked ? const Color(0xFFFFD700) : Colors.grey[400],
+      ),
+    );
   }
 }

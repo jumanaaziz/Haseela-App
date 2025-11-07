@@ -6,6 +6,7 @@ enum BadgeType {
   conquerorsCrown, // First place in challenge
 }
 
+// test
 class Badge {
   final String id;
   final BadgeType type;

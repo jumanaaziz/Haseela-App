@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'leaderboard_entry.dart';
-import '../../../widgets/custom_bottom_nav.dart';
 import '../../../models/child.dart';
+import '../../../models/wallet.dart';
+import '../../../models/transaction.dart' as app_transaction;
 import '../../services/haseela_service.dart';
 import '../../services/firebase_service.dart';
-import '../child_home_screen.dart';
-import '../child_task_view_screen.dart';
-import '../wishlist_screen.dart';
 import 'dart:async';
 import 'my_badge_view.dart';
 import '../../../services/badge_service.dart';
@@ -35,7 +33,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   bool _showMyBadge = false;
   bool _isWeekly = true; // Weekly filter selected by default
   bool _isMonthDropdownOpen = false; // Track dropdown state
-  bool _isChallengeDropdownOpen = false; // Track challenge dropdown state
+  bool _isWeeklyChallengeDropdownOpen =
+      false; // Weekly challenge dropdown state
+  bool _isMonthlyChallengeDropdownOpen =
+      false; // Monthly challenge dropdown state
   final HaseelaService _haseelaService = HaseelaService();
   DateTime _selectedMonth = DateTime(
     DateTime.now().year,
@@ -141,53 +142,74 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       final now = DateTime.now();
       var weekStart = now.subtract(Duration(days: now.weekday - 1));
       weekStart = DateTime(weekStart.year, weekStart.month, weekStart.day);
+      final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      childTasksMap = {};
+      final Set<String> challengeNamesSet = {};
 
-      // First, collect all unique challenge names from the week
-      Set<String> challengeNamesSet = {};
-      for (final child in children) {
-        final doneTasksSnapshot = await FirebaseFirestore.instance
+      // First, get ALL challenge tasks (completed and not completed) to populate dropdown
+      final allChallengeQueries = children.map((child) async {
+        final allTasksSnapshot = await FirebaseFirestore.instance
             .collection("Parents")
             .doc(widget.parentId)
             .collection("Children")
             .doc(child.id)
             .collection("Tasks")
             .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'done')
             .get();
 
-        final pendingTasksSnapshot = await FirebaseFirestore.instance
-            .collection("Parents")
-            .doc(widget.parentId)
-            .collection("Children")
-            .doc(child.id)
-            .collection("Tasks")
-            .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'pending')
-            .get();
+        return {'childId': child.id, 'allTasks': allTasksSnapshot.docs};
+      }).toList();
 
-        for (var taskDoc in [
-          ...doneTasksSnapshot.docs,
-          ...pendingTasksSnapshot.docs,
-        ]) {
-          final taskData = taskDoc.data();
-          if (taskData['completedDate'] != null) {
-            final completedDate = (taskData['completedDate'] as Timestamp)
-                .toDate();
-            if (completedDate.isAfter(
-              weekStart.subtract(const Duration(seconds: 1)),
-            )) {
-              final taskName = taskData['taskName'] as String? ?? '';
-              if (taskName.isNotEmpty) {
-                challengeNamesSet.add(taskName);
-              }
-            }
+      final allChallengeResults = await Future.wait(allChallengeQueries);
+      for (final result in allChallengeResults) {
+        final allTasks =
+            result['allTasks']
+                as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+        for (final taskDoc in allTasks) {
+          final taskName = taskDoc.data()['taskName'] as String? ?? '';
+          if (taskName.isNotEmpty) {
+            challengeNamesSet.add(taskName);
           }
         }
       }
 
-      // Update available challenges list
+      // Then, get completed tasks (pending or done) for leaderboard calculations
+      // pending = child completed, waiting for approval
+      // done = parent approved
+      final taskQueries = children.map((child) async {
+        final completedTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', whereIn: ['pending', 'done'])
+            .get();
+
+        final filteredTasks = completedTasksSnapshot.docs.where((taskDoc) {
+          final taskData = taskDoc.data();
+          final completedDate = (taskData['completedDate'] as Timestamp?)
+              ?.toDate();
+          return completedDate != null &&
+              completedDate.isAfter(
+                weekStart.subtract(const Duration(seconds: 1)),
+              );
+        }).toList();
+
+        return {'childId': child.id, 'tasks': filteredTasks};
+      }).toList();
+
+      final taskResults = await Future.wait(taskQueries);
+      for (final result in taskResults) {
+        final childId = result['childId'] as String;
+        final tasks =
+            result['tasks']
+                as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+        childTasksMap[childId] = tasks;
+      }
+
       final availableChallenges = challengeNamesSet.toList()..sort();
-      // Use current selected challenge, but reset if it's no longer available
       String? selectedChallenge = _selectedChallenge;
       if (selectedChallenge != null &&
           !availableChallenges.contains(selectedChallenge)) {
@@ -197,97 +219,71 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         );
       }
 
-      // Calculate data for each child based on challenge tasks
-      Map<String, Map<String, dynamic>> childDataMap = {};
+      final Map<String, Map<String, dynamic>> childDataMap = {};
 
-      for (final child in children) {
-        // Get completed challenge tasks (both 'done' and 'pending')
-        final doneTasksSnapshot = await FirebaseFirestore.instance
-            .collection("Parents")
-            .doc(widget.parentId)
-            .collection("Children")
-            .doc(child.id)
-            .collection("Tasks")
-            .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'done')
-            .get();
+      // Parallelize wallet and transaction queries
+      final dataQueries = children.map((child) async {
+        final tasksForChild = childTasksMap[child.id] ?? [];
+        final relevantTasks = selectedChallenge == null
+            ? tasksForChild
+            : tasksForChild.where((taskDoc) {
+                final taskName = taskDoc.data()['taskName'] as String? ?? '';
+                return taskName == selectedChallenge;
+              }).toList();
 
-        final pendingTasksSnapshot = await FirebaseFirestore.instance
-            .collection("Parents")
-            .doc(widget.parentId)
-            .collection("Children")
-            .doc(child.id)
-            .collection("Tasks")
-            .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'pending')
-            .get();
-
-        // Combine both done and pending tasks
-        final allCompletedTasks = [
-          ...doneTasksSnapshot.docs,
-          ...pendingTasksSnapshot.docs,
-        ];
-
-        // Calculate score based on how fast they completed (earliest completion wins)
-        // Filter by selected challenge if one is selected
         DateTime? earliestCompletion;
-        int completedCount = 0;
+        final int completedCount = relevantTasks.length;
 
-        if (allCompletedTasks.isNotEmpty) {
-          for (var taskDoc in allCompletedTasks) {
-            final taskData = taskDoc.data();
-            final taskName = taskData['taskName'] as String? ?? '';
-
-            // If a challenge is selected, only count tasks matching that challenge
-            if (selectedChallenge != null && taskName != selectedChallenge) {
-              continue;
-            }
-
-            if (taskData['completedDate'] != null) {
-              final completedDate = (taskData['completedDate'] as Timestamp)
-                  .toDate();
-              // Check if within last 7 days
-              if (completedDate.isAfter(
-                weekStart.subtract(const Duration(seconds: 1)),
-              )) {
-                if (earliestCompletion == null ||
-                    completedDate.isBefore(earliestCompletion)) {
-                  earliestCompletion = completedDate;
-                }
-                completedCount++;
-              }
-            }
+        for (final taskDoc in relevantTasks) {
+          final completedDate = (taskDoc.data()['completedDate'] as Timestamp?)
+              ?.toDate();
+          if (completedDate == null) continue;
+          if (earliestCompletion == null ||
+              completedDate.isBefore(earliestCompletion)) {
+            earliestCompletion = completedDate;
           }
         }
 
-        // Get wallet for display
-        final wallet = await FirebaseService.getChildWallet(
+        // Fetch wallet and transactions in parallel
+        final walletFuture = FirebaseService.getChildWallet(
           widget.parentId,
           child.id,
         );
+        final transactionsFuture =
+            FirebaseService.getChildTransactions(
+              widget.parentId,
+              child.id,
+            ).catchError((e) {
+              print('Error loading transactions for ${child.id}: $e');
+              return <app_transaction.Transaction>[];
+            });
+
+        final results = await Future.wait([walletFuture, transactionsFuture]);
+        final wallet = results[0] as Wallet?;
+        final transactions = results[1];
+
         final totalSaved = wallet?.savingBalance ?? 0.0;
         final totalSpent = wallet?.spendingBalance ?? 0.0;
 
-        // Calculate points and level
         final points = LeaderboardEntry.calculatePoints(totalSaved);
         final currentLevel = LeaderboardEntry.calculateLevel(totalSaved);
         final progress = LeaderboardEntry.calculateProgressToNextLevel(
           totalSaved,
         );
 
-        // Get recent purchases
-        List<RecentPurchase> spendingTransactions = [];
+        List<RecentPurchase> recentPurchases = [];
         try {
-          final transactions = await FirebaseService.getChildTransactions(
-            widget.parentId,
-            child.id,
-          );
-          spendingTransactions = transactions
-              .where(
-                (t) =>
-                    t.type.toLowerCase() == 'spending' &&
-                    t.fromWallet.toLowerCase() == 'spending',
-              )
+          final spendingTransactions =
+              (transactions as List<app_transaction.Transaction>)
+                  .where(
+                    (t) =>
+                        t.type.toLowerCase() == 'spending' &&
+                        t.fromWallet.toLowerCase() == 'spending',
+                  )
+                  .toList()
+                ..sort((a, b) => b.date.compareTo(a.date));
+
+          recentPurchases = spendingTransactions
               .take(3)
               .map(
                 (t) => RecentPurchase(
@@ -298,24 +294,32 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               )
               .toList();
         } catch (e) {
-          print('Error loading transactions: $e');
+          print('Error processing transactions: $e');
         }
 
         final childName = '${child.firstName} ${child.lastName}'.trim();
-        if (childName.isEmpty) continue;
+        if (childName.isEmpty) return null;
 
-        childDataMap[child.id] = {
+        return {
+          'childId': child.id,
           'child': child,
           'name': childName,
           'completedCount': completedCount,
-          'earliestCompletion': earliestCompletion ?? DateTime.now(),
+          'earliestCompletion': earliestCompletion,
           'totalSaved': totalSaved,
           'totalSpent': totalSpent,
           'points': points,
           'currentLevel': currentLevel,
           'progress': progress,
-          'recentPurchases': spendingTransactions,
+          'recentPurchases': recentPurchases,
         };
+      }).toList();
+
+      final dataResults = await Future.wait(dataQueries);
+      for (final result in dataResults) {
+        if (result == null) continue;
+        final childId = result['childId'] as String;
+        childDataMap[childId] = result as Map<String, dynamic>;
       }
 
       // If a challenge is selected, only include children who completed that challenge
@@ -326,77 +330,83 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             }).toList()
           : childDataMap.entries.toList();
 
-      // First, sort all children alphabetically
-      final sortedEntries = filteredEntries;
-      sortedEntries.sort((a, b) {
-        final aName = a.value['name'] as String;
-        final bName = b.value['name'] as String;
-        return aName.toLowerCase().compareTo(bName.toLowerCase());
-      });
-
-      // Find children who completed challenges and sort by earliest completion time
-      final childrenWithChallenges = sortedEntries.where((entry) {
+      // Check if all children have no challenge completions
+      final allHaveNoChallenges = filteredEntries.every((entry) {
         final count = entry.value['completedCount'] as int;
-        return count > 0;
-      }).toList();
-
-      childrenWithChallenges.sort((a, b) {
-        final aDate = a.value['earliestCompletion'] as DateTime;
-        final bDate = b.value['earliestCompletion'] as DateTime;
-        return aDate.compareTo(bDate);
+        return count == 0;
       });
 
-      // Get first two children who completed challenges
-      final firstCompleter = childrenWithChallenges.isNotEmpty
-          ? childrenWithChallenges[0]
-          : null;
-      final secondCompleter = childrenWithChallenges.length > 1
-          ? childrenWithChallenges[1]
-          : null;
+      if (allHaveNoChallenges && filteredEntries.isNotEmpty) {
+        // Sort alphabetically when no challenges
+        filteredEntries.sort((a, b) {
+          final aName = (a.value['name'] as String).toLowerCase();
+          final bName = (b.value['name'] as String).toLowerCase();
+          return aName.compareTo(bName);
+        });
+      } else {
+        // Normal sorting when there are challenges - prioritize earliest completion
+        filteredEntries.sort((a, b) {
+          final aData = a.value;
+          final bData = b.value;
+          final aCount = aData['completedCount'] as int;
+          final bCount = bData['completedCount'] as int;
 
-      // Create final sorted list: first two completers first, then rest sorted by rank (points/level)
-      final List<MapEntry<String, Map<String, dynamic>>> finalSorted = [];
+          // First priority: children with completions rank above those without
+          if (aCount > 0 && bCount == 0) {
+            return -1; // a has completions, b doesn't - a comes first
+          }
+          if (aCount == 0 && bCount > 0) {
+            return 1; // b has completions, a doesn't - b comes first
+          }
 
-      // Add first completer if exists
-      if (firstCompleter != null) {
-        finalSorted.add(firstCompleter);
+          // Second priority: earliest completion date (first to complete is #1)
+          if (aCount > 0 && bCount > 0) {
+            final aDate = aData['earliestCompletion'] as DateTime?;
+            final bDate = bData['earliestCompletion'] as DateTime?;
+            if (aDate != null && bDate != null) {
+              final dateComparison = aDate.compareTo(bDate);
+              if (dateComparison != 0) {
+                return dateComparison; // Earlier date comes first
+              }
+            } else if (aDate != null && bDate == null) {
+              return -1; // a has date, b doesn't - a comes first
+            } else if (aDate == null && bDate != null) {
+              return 1; // b has date, a doesn't - b comes first
+            }
+          }
+
+          // Third priority: number of completed challenges
+          if (aCount != bCount) {
+            return bCount.compareTo(aCount);
+          }
+
+          // Fourth priority: points
+          final aPoints = aData['points'] as int;
+          final bPoints = bData['points'] as int;
+          if (aPoints != bPoints) {
+            return bPoints.compareTo(aPoints);
+          }
+
+          // Fifth priority: level
+          final aLevel = aData['currentLevel'] as int;
+          final bLevel = bData['currentLevel'] as int;
+          if (aLevel != bLevel) {
+            return bLevel.compareTo(aLevel);
+          }
+
+          // Sixth priority: name (alphabetical)
+          final aName = (aData['name'] as String).toLowerCase();
+          final bName = (bData['name'] as String).toLowerCase();
+          return aName.compareTo(bName);
+        });
       }
 
-      // Add second completer if exists
-      if (secondCompleter != null) {
-        finalSorted.add(secondCompleter);
-      }
-
-      // Add rest of children (excluding first two completers) sorted by rank (points descending, then alphabetically)
-      final remainingChildren = sortedEntries.where((entry) {
-        return entry != firstCompleter && entry != secondCompleter;
-      }).toList();
-
-      remainingChildren.sort((a, b) {
-        final aData = a.value;
-        final bData = b.value;
-        final aPoints = aData['points'] as int;
-        final bPoints = bData['points'] as int;
-
-        // Sort by points (descending)
-        if (bPoints != aPoints) {
-          return bPoints.compareTo(aPoints);
-        }
-        // If same points, sort alphabetically
-        final aName = aData['name'] as String;
-        final bName = bData['name'] as String;
-        return aName.toLowerCase().compareTo(bName.toLowerCase());
-      });
-
-      finalSorted.addAll(remainingChildren);
-
-      // Build LeaderboardEntry list
-      List<LeaderboardEntry> entries = [];
-      for (int i = 0; i < finalSorted.length; i++) {
-        final entry = finalSorted[i];
+      final List<LeaderboardEntry> entries = [];
+      // Start ranking from 1 (even when no challenges)
+      for (int i = 0; i < filteredEntries.length; i++) {
+        final entry = filteredEntries[i];
         final data = entry.value;
         final child = data['child'] as Child;
-
         entries.add(
           LeaderboardEntry(
             id: entry.key,
@@ -413,16 +423,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         );
       }
 
-      // Check if current child is first place (for Conqueror's Crown badge)
       if (entries.isNotEmpty &&
           entries[0].id == widget.childId &&
           entries[0].rank == 1) {
-        // Check if unique first place (no tie)
-        final firstCount =
-            childDataMap[entries[0].id]!['completedCount'] as int;
-        final secondCount = entries.length > 1
-            ? (childDataMap[entries[1].id]?['completedCount'] as int? ?? 0)
-            : 0;
+        final firstData = childDataMap[entries[0].id];
+        final firstCount = (firstData?['completedCount'] as int?) ?? 0;
+        final secondEntry = entries.length > 1 ? entries[1] : null;
+        final secondData = secondEntry != null
+            ? childDataMap[secondEntry.id]
+            : null;
+        final secondCount = (secondData?['completedCount'] as int?) ?? 0;
 
         if (entries.length == 1 ||
             (firstCount > secondCount && firstCount > 0)) {
@@ -461,46 +471,38 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         widget.parentId,
       );
 
-      // Check if any child has challenge tasks in this month
-      for (final child in children) {
-        final doneTasks = await FirebaseFirestore.instance
+      // Check if any child has challenge tasks in this month - parallelize queries
+      // Include both pending and done status (pending = completed by child, done = approved)
+      final monthCheckQueries = children.map((child) async {
+        final completedTasks = await FirebaseFirestore.instance
             .collection("Parents")
             .doc(widget.parentId)
             .collection("Children")
             .doc(child.id)
             .collection("Tasks")
             .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'done')
+            .where('status', whereIn: ['pending', 'done'])
             .get();
 
-        final pendingTasks = await FirebaseFirestore.instance
-            .collection("Parents")
-            .doc(widget.parentId)
-            .collection("Children")
-            .doc(child.id)
-            .collection("Tasks")
-            .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'pending')
-            .get();
-
-        // Check if any task is completed in this month
-        for (var taskDoc in [...doneTasks.docs, ...pendingTasks.docs]) {
+        for (final taskDoc in completedTasks.docs) {
           final taskData = taskDoc.data();
-          if (taskData['completedDate'] != null) {
-            final completedDate = (taskData['completedDate'] as Timestamp)
-                .toDate();
-            if (completedDate.isAfter(
-                  monthStart.subtract(const Duration(seconds: 1)),
-                ) &&
-                completedDate.isBefore(
-                  monthEnd.add(const Duration(seconds: 1)),
-                )) {
-              return true; // Found at least one challenge in this month
-            }
+          final completedDate = (taskData['completedDate'] as Timestamp?)
+              ?.toDate();
+          if (completedDate == null) continue;
+          if (completedDate.isAfter(
+                monthStart.subtract(const Duration(seconds: 1)),
+              ) &&
+              completedDate.isBefore(
+                monthEnd.add(const Duration(seconds: 1)),
+              )) {
+            return true;
           }
         }
-      }
-      return false; // No challenges found in this month
+        return false;
+      }).toList();
+
+      final monthCheckResults = await Future.wait(monthCheckQueries);
+      return monthCheckResults.any((hasChallenge) => hasChallenge == true);
     } catch (e) {
       print('Error checking if month has challenges: $e');
       return false;
@@ -556,56 +558,77 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         59,
         59,
       );
+      final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      childTasksMap = {};
+      final Set<String> challengeNamesSet = {};
 
-      // First, collect all unique challenge names from the selected month
-      Set<String> challengeNamesSet = {};
-      for (final child in children) {
-        final doneTasksSnapshot = await FirebaseFirestore.instance
+      // First, get ALL challenge tasks (completed and not completed) to populate dropdown
+      final allMonthlyChallengeQueries = children.map((child) async {
+        final allTasksSnapshot = await FirebaseFirestore.instance
             .collection("Parents")
             .doc(widget.parentId)
             .collection("Children")
             .doc(child.id)
             .collection("Tasks")
             .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'done')
             .get();
 
-        final pendingTasksSnapshot = await FirebaseFirestore.instance
-            .collection("Parents")
-            .doc(widget.parentId)
-            .collection("Children")
-            .doc(child.id)
-            .collection("Tasks")
-            .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'pending')
-            .get();
+        return {'childId': child.id, 'allTasks': allTasksSnapshot.docs};
+      }).toList();
 
-        for (var taskDoc in [
-          ...doneTasksSnapshot.docs,
-          ...pendingTasksSnapshot.docs,
-        ]) {
-          final taskData = taskDoc.data();
-          if (taskData['completedDate'] != null) {
-            final completedDate = (taskData['completedDate'] as Timestamp)
-                .toDate();
-            if (completedDate.isAfter(
-                  monthStart.subtract(const Duration(seconds: 1)),
-                ) &&
-                completedDate.isBefore(
-                  monthEnd.add(const Duration(seconds: 1)),
-                )) {
-              final taskName = taskData['taskName'] as String? ?? '';
-              if (taskName.isNotEmpty) {
-                challengeNamesSet.add(taskName);
-              }
-            }
+      final allMonthlyChallengeResults = await Future.wait(
+        allMonthlyChallengeQueries,
+      );
+      for (final result in allMonthlyChallengeResults) {
+        final allTasks =
+            result['allTasks']
+                as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+        for (final taskDoc in allTasks) {
+          final taskName = taskDoc.data()['taskName'] as String? ?? '';
+          if (taskName.isNotEmpty) {
+            challengeNamesSet.add(taskName);
           }
         }
       }
 
-      // Update available challenges list
+      // Then, get completed tasks (pending or done) for leaderboard calculations
+      // pending = child completed, waiting for approval
+      // done = parent approved
+      final monthlyTaskQueries = children.map((child) async {
+        final completedTasksSnapshot = await FirebaseFirestore.instance
+            .collection("Parents")
+            .doc(widget.parentId)
+            .collection("Children")
+            .doc(child.id)
+            .collection("Tasks")
+            .where('isChallenge', isEqualTo: true)
+            .where('status', whereIn: ['pending', 'done'])
+            .get();
+
+        final filteredTasks = completedTasksSnapshot.docs.where((taskDoc) {
+          final taskData = taskDoc.data();
+          final completedDate = (taskData['completedDate'] as Timestamp?)
+              ?.toDate();
+          return completedDate != null &&
+              completedDate.isAfter(
+                monthStart.subtract(const Duration(seconds: 1)),
+              ) &&
+              completedDate.isBefore(monthEnd.add(const Duration(seconds: 1)));
+        }).toList();
+
+        return {'childId': child.id, 'tasks': filteredTasks};
+      }).toList();
+
+      final monthlyTaskResults = await Future.wait(monthlyTaskQueries);
+      for (final result in monthlyTaskResults) {
+        final childId = result['childId'] as String;
+        final tasks =
+            result['tasks']
+                as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+        childTasksMap[childId] = tasks;
+      }
+
       final availableMonthlyChallenges = challengeNamesSet.toList()..sort();
-      // Use current selected challenge, but reset if it's no longer available
       String? selectedMonthlyChallenge = _selectedMonthlyChallenge;
       if (selectedMonthlyChallenge != null &&
           !availableMonthlyChallenges.contains(selectedMonthlyChallenge)) {
@@ -615,101 +638,71 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         );
       }
 
-      // Calculate data for each child based on challenge tasks
-      Map<String, Map<String, dynamic>> childDataMap = {};
+      final Map<String, Map<String, dynamic>> childDataMap = {};
 
-      for (final child in children) {
-        // Get completed challenge tasks (both 'done' and 'pending')
-        final doneTasksSnapshot = await FirebaseFirestore.instance
-            .collection("Parents")
-            .doc(widget.parentId)
-            .collection("Children")
-            .doc(child.id)
-            .collection("Tasks")
-            .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'done')
-            .get();
+      // Parallelize wallet and transaction queries
+      final monthlyDataQueries = children.map((child) async {
+        final tasksForChild = childTasksMap[child.id] ?? [];
+        final relevantTasks = selectedMonthlyChallenge == null
+            ? tasksForChild
+            : tasksForChild.where((taskDoc) {
+                final taskName = taskDoc.data()['taskName'] as String? ?? '';
+                return taskName == selectedMonthlyChallenge;
+              }).toList();
 
-        final pendingTasksSnapshot = await FirebaseFirestore.instance
-            .collection("Parents")
-            .doc(widget.parentId)
-            .collection("Children")
-            .doc(child.id)
-            .collection("Tasks")
-            .where('isChallenge', isEqualTo: true)
-            .where('status', isEqualTo: 'pending')
-            .get();
-
-        // Combine both done and pending tasks
-        final allCompletedTasks = [
-          ...doneTasksSnapshot.docs,
-          ...pendingTasksSnapshot.docs,
-        ];
-
-        // Calculate score based on how fast they completed (earliest completion wins)
-        // Filter by selected challenge if one is selected
         DateTime? earliestCompletion;
-        int completedCount = 0;
+        final int completedCount = relevantTasks.length;
 
-        if (allCompletedTasks.isNotEmpty) {
-          for (var taskDoc in allCompletedTasks) {
-            final taskData = taskDoc.data();
-            final taskName = taskData['taskName'] as String? ?? '';
-
-            // If a challenge is selected, only count tasks matching that challenge
-            if (selectedMonthlyChallenge != null &&
-                taskName != selectedMonthlyChallenge) {
-              continue;
-            }
-
-            if (taskData['completedDate'] != null) {
-              final completedDate = (taskData['completedDate'] as Timestamp)
-                  .toDate();
-              // Check if within selected month
-              if (completedDate.isAfter(
-                    monthStart.subtract(const Duration(seconds: 1)),
-                  ) &&
-                  completedDate.isBefore(
-                    monthEnd.add(const Duration(seconds: 1)),
-                  )) {
-                if (earliestCompletion == null ||
-                    completedDate.isBefore(earliestCompletion)) {
-                  earliestCompletion = completedDate;
-                }
-                completedCount++;
-              }
-            }
+        for (final taskDoc in relevantTasks) {
+          final completedDate = (taskDoc.data()['completedDate'] as Timestamp?)
+              ?.toDate();
+          if (completedDate == null) continue;
+          if (earliestCompletion == null ||
+              completedDate.isBefore(earliestCompletion)) {
+            earliestCompletion = completedDate;
           }
         }
 
-        // Get wallet for display
-        final wallet = await FirebaseService.getChildWallet(
+        // Fetch wallet and transactions in parallel
+        final walletFuture = FirebaseService.getChildWallet(
           widget.parentId,
           child.id,
         );
+        final transactionsFuture =
+            FirebaseService.getChildTransactions(
+              widget.parentId,
+              child.id,
+            ).catchError((e) {
+              print('Error loading transactions for ${child.id}: $e');
+              return <app_transaction.Transaction>[];
+            });
+
+        final results = await Future.wait([walletFuture, transactionsFuture]);
+        final wallet = results[0] as Wallet?;
+        final transactions = results[1];
+
         final totalSaved = wallet?.savingBalance ?? 0.0;
         final totalSpent = wallet?.spendingBalance ?? 0.0;
 
-        // Calculate points and level
         final points = LeaderboardEntry.calculatePoints(totalSaved);
         final currentLevel = LeaderboardEntry.calculateLevel(totalSaved);
         final progress = LeaderboardEntry.calculateProgressToNextLevel(
           totalSaved,
         );
 
-        // Get recent purchases
-        List<RecentPurchase> spendingTransactions = [];
+        List<RecentPurchase> recentPurchases = [];
         try {
-          final transactions = await FirebaseService.getChildTransactions(
-            widget.parentId,
-            child.id,
-          );
-          spendingTransactions = transactions
-              .where(
-                (t) =>
-                    t.type.toLowerCase() == 'spending' &&
-                    t.fromWallet.toLowerCase() == 'spending',
-              )
+          final spendingTransactions =
+              (transactions as List<app_transaction.Transaction>)
+                  .where(
+                    (t) =>
+                        t.type.toLowerCase() == 'spending' &&
+                        t.fromWallet.toLowerCase() == 'spending',
+                  )
+                  .toList()
+                ..sort((a, b) => b.date.compareTo(a.date));
+
+          recentPurchases = spendingTransactions
               .take(3)
               .map(
                 (t) => RecentPurchase(
@@ -720,24 +713,32 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               )
               .toList();
         } catch (e) {
-          print('Error loading transactions: $e');
+          print('Error processing transactions: $e');
         }
 
         final childName = '${child.firstName} ${child.lastName}'.trim();
-        if (childName.isEmpty) continue;
+        if (childName.isEmpty) return null;
 
-        childDataMap[child.id] = {
+        return {
+          'childId': child.id,
           'child': child,
           'name': childName,
           'completedCount': completedCount,
-          'earliestCompletion': earliestCompletion ?? DateTime.now(),
+          'earliestCompletion': earliestCompletion,
           'totalSaved': totalSaved,
           'totalSpent': totalSpent,
           'points': points,
           'currentLevel': currentLevel,
           'progress': progress,
-          'recentPurchases': spendingTransactions,
+          'recentPurchases': recentPurchases,
         };
+      }).toList();
+
+      final monthlyDataResults = await Future.wait(monthlyDataQueries);
+      for (final result in monthlyDataResults) {
+        if (result == null) continue;
+        final childId = result['childId'] as String;
+        childDataMap[childId] = result as Map<String, dynamic>;
       }
 
       // If a challenge is selected, only include children who completed that challenge
@@ -748,77 +749,66 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             }).toList()
           : childDataMap.entries.toList();
 
-      // First, sort all children alphabetically
-      final sortedEntries = filteredEntries;
-      sortedEntries.sort((a, b) {
-        final aName = a.value['name'] as String;
-        final bName = b.value['name'] as String;
-        return aName.toLowerCase().compareTo(bName.toLowerCase());
-      });
-
-      // Find children who completed challenges and sort by earliest completion time
-      final childrenWithChallenges = sortedEntries.where((entry) {
-        final count = entry.value['completedCount'] as int;
-        return count > 0;
-      }).toList();
-
-      childrenWithChallenges.sort((a, b) {
-        final aDate = a.value['earliestCompletion'] as DateTime;
-        final bDate = b.value['earliestCompletion'] as DateTime;
-        return aDate.compareTo(bDate);
-      });
-
-      // Get first two children who completed challenges
-      final firstCompleter = childrenWithChallenges.isNotEmpty
-          ? childrenWithChallenges[0]
-          : null;
-      final secondCompleter = childrenWithChallenges.length > 1
-          ? childrenWithChallenges[1]
-          : null;
-
-      // Create final sorted list: first two completers first, then rest sorted by rank (points/level)
-      final List<MapEntry<String, Map<String, dynamic>>> finalSorted = [];
-
-      // Add first completer if exists
-      if (firstCompleter != null) {
-        finalSorted.add(firstCompleter);
-      }
-
-      // Add second completer if exists
-      if (secondCompleter != null) {
-        finalSorted.add(secondCompleter);
-      }
-
-      // Add rest of children (excluding first two completers) sorted by rank (points descending, then alphabetically)
-      final remainingChildren = sortedEntries.where((entry) {
-        return entry != firstCompleter && entry != secondCompleter;
-      }).toList();
-
-      remainingChildren.sort((a, b) {
+      filteredEntries.sort((a, b) {
         final aData = a.value;
         final bData = b.value;
+        final aCount = aData['completedCount'] as int;
+        final bCount = bData['completedCount'] as int;
+
+        // First priority: children with completions rank above those without
+        if (aCount > 0 && bCount == 0) {
+          return -1; // a has completions, b doesn't - a comes first
+        }
+        if (aCount == 0 && bCount > 0) {
+          return 1; // b has completions, a doesn't - b comes first
+        }
+
+        // Second priority: earliest completion date (first to complete is #1)
+        if (aCount > 0 && bCount > 0) {
+          final aDate = aData['earliestCompletion'] as DateTime?;
+          final bDate = bData['earliestCompletion'] as DateTime?;
+          if (aDate != null && bDate != null) {
+            final dateComparison = aDate.compareTo(bDate);
+            if (dateComparison != 0) {
+              return dateComparison; // Earlier date comes first
+            }
+          } else if (aDate != null && bDate == null) {
+            return -1; // a has date, b doesn't - a comes first
+          } else if (aDate == null && bDate != null) {
+            return 1; // b has date, a doesn't - b comes first
+          }
+        }
+
+        // Third priority: number of completed challenges
+        if (aCount != bCount) {
+          return bCount.compareTo(aCount);
+        }
+
+        // Fourth priority: points
         final aPoints = aData['points'] as int;
         final bPoints = bData['points'] as int;
-
-        // Sort by points (descending)
-        if (bPoints != aPoints) {
+        if (aPoints != bPoints) {
           return bPoints.compareTo(aPoints);
         }
-        // If same points, sort alphabetically
-        final aName = aData['name'] as String;
-        final bName = bData['name'] as String;
-        return aName.toLowerCase().compareTo(bName.toLowerCase());
+
+        // Fifth priority: level
+        final aLevel = aData['currentLevel'] as int;
+        final bLevel = bData['currentLevel'] as int;
+        if (aLevel != bLevel) {
+          return bLevel.compareTo(aLevel);
+        }
+
+        // Sixth priority: name (alphabetical)
+        final aName = (aData['name'] as String).toLowerCase();
+        final bName = (bData['name'] as String).toLowerCase();
+        return aName.compareTo(bName);
       });
 
-      finalSorted.addAll(remainingChildren);
-
-      // Build LeaderboardEntry list
-      List<LeaderboardEntry> entries = [];
-      for (int i = 0; i < finalSorted.length; i++) {
-        final entry = finalSorted[i];
+      final List<LeaderboardEntry> entries = [];
+      for (int i = 0; i < filteredEntries.length; i++) {
+        final entry = filteredEntries[i];
         final data = entry.value;
         final child = data['child'] as Child;
-
         entries.add(
           LeaderboardEntry(
             id: entry.key,
@@ -835,16 +825,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         );
       }
 
-      // Check if current child is first place (for Conqueror's Crown badge)
       if (entries.isNotEmpty &&
           entries[0].id == widget.childId &&
           entries[0].rank == 1) {
-        // Check if unique first place (no tie)
-        final firstCount =
-            childDataMap[entries[0].id]!['completedCount'] as int;
-        final secondCount = entries.length > 1
-            ? (childDataMap[entries[1].id]?['completedCount'] as int? ?? 0)
-            : 0;
+        final firstData = childDataMap[entries[0].id];
+        final firstCount = (firstData?['completedCount'] as int?) ?? 0;
+        final secondEntry = entries.length > 1 ? entries[1] : null;
+        final secondData = secondEntry != null
+            ? childDataMap[secondEntry.id]
+            : null;
+        final secondCount = (secondData?['completedCount'] as int?) ?? 0;
 
         if (entries.length == 1 ||
             (firstCount > secondCount && firstCount > 0)) {
@@ -916,48 +906,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: CustomBottomNavigationBar(
-        currentIndex: 3,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => HomeScreen(
-                    parentId: widget.parentId,
-                    childId: widget.childId,
-                  ),
-                ),
-              );
-              break;
-            case 1:
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChildTaskViewScreen(
-                    parentId: widget.parentId,
-                    childId: widget.childId,
-                  ),
-                ),
-              );
-              break;
-            case 2:
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => WishlistScreen(
-                    parentId: widget.parentId,
-                    childId: widget.childId,
-                  ),
-                ),
-              );
-              break;
-            case 3:
-              break;
-          }
-        },
-      ),
     );
   }
 
@@ -1021,6 +969,43 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget _buildBarChartView() {
     if (_leaderboardData.isEmpty) return SizedBox.shrink();
 
+    // Check if all children have no challenge completions (weekly only)
+    final hasNoChallenges = _isWeekly && _leaderboardData.isNotEmpty;
+    bool allHaveNoChallenges = false;
+    if (hasNoChallenges) {
+      // Check if all entries have 0 challenge completions by checking if they're sorted alphabetically
+      // We can detect this by checking if the first entry's rank is 1 and all have same challenge count
+      // Actually, we need to check the data - let's use a simpler approach
+      // If weekly and we have data, check if all have rank starting from 1 and sorted alphabetically
+      // For now, we'll check if there are any challenges available
+      allHaveNoChallenges =
+          _availableChallenges.isEmpty && _leaderboardData.isNotEmpty;
+    }
+
+    // If no challenges in weekly view, show message
+    if (allHaveNoChallenges && _isWeekly) {
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20.w),
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: 40.h),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          child: Center(
+            child: Text(
+              'No challenges in this week',
+              style: TextStyle(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF6B7280),
+                fontFamily: 'SPProText',
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final topThree = _leaderboardData.length >= 3
         ? _leaderboardData.take(3).toList()
         : _leaderboardData;
@@ -1031,11 +1016,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Column(
       children: [
         // User Rank Banner
-        if (_currentUserEntry != null) _buildUserRankBanner(_currentUserEntry!),
-        SizedBox(height: 24.h),
+        if (_currentUserEntry != null) ...[
+          _buildUserRankBanner(_currentUserEntry!),
+          SizedBox(height: 24.h),
+        ],
         // Podium for Top 3
         if (topThree.isNotEmpty) _buildPodium(topThree),
-        SizedBox(height: 24.h),
+        if (topThree.isNotEmpty || otherPlayers.isNotEmpty)
+          SizedBox(height: 24.h),
         // List for Rank 4+
         if (otherPlayers.isNotEmpty) ..._buildOtherPlayersList(otherPlayers),
         SizedBox(height: 100.h), // Space for bottom nav
@@ -1052,11 +1040,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           // Reset challenge selection when switching views
           if (!isWeeklyButton) {
             _selectedChallenge = null;
-            _isChallengeDropdownOpen = false;
           } else {
             _selectedMonthlyChallenge = null;
-            _isChallengeDropdownOpen = false;
           }
+          _isWeeklyChallengeDropdownOpen = false;
+          _isMonthlyChallengeDropdownOpen = false;
+          _isMonthDropdownOpen = false;
         });
         // Reload data when switching views
         if (isWeeklyButton) {
@@ -1783,7 +1772,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         GestureDetector(
           onTap: () {
             setState(() {
-              _isChallengeDropdownOpen = !_isChallengeDropdownOpen;
+              _isWeeklyChallengeDropdownOpen = !_isWeeklyChallengeDropdownOpen;
+              if (_isWeeklyChallengeDropdownOpen) {
+                _isMonthlyChallengeDropdownOpen = false;
+              }
             });
           },
           child: Container(
@@ -1808,7 +1800,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   ),
                 ),
                 Icon(
-                  _isChallengeDropdownOpen
+                  _isWeeklyChallengeDropdownOpen
                       ? Icons.keyboard_arrow_up
                       : Icons.keyboard_arrow_down,
                   color: const Color(0xFF643FDB),
@@ -1820,7 +1812,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
 
         // Dropdown list (only show when open)
-        if (_isChallengeDropdownOpen) ...[
+        if (_isWeeklyChallengeDropdownOpen) ...[
           SizedBox(height: 8.h),
           Container(
             decoration: BoxDecoration(
@@ -1835,7 +1827,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 return GestureDetector(
                   onTap: () async {
                     setState(() {
-                      _isChallengeDropdownOpen = false;
+                      _isWeeklyChallengeDropdownOpen = false;
                     });
                     if (_selectedChallenge != challengeName) {
                       setState(() {
@@ -1887,7 +1879,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         GestureDetector(
           onTap: () {
             setState(() {
-              _isChallengeDropdownOpen = !_isChallengeDropdownOpen;
+              _isMonthlyChallengeDropdownOpen =
+                  !_isMonthlyChallengeDropdownOpen;
+              if (_isMonthlyChallengeDropdownOpen) {
+                _isWeeklyChallengeDropdownOpen = false;
+              }
             });
           },
           child: Container(
@@ -1912,7 +1908,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   ),
                 ),
                 Icon(
-                  _isChallengeDropdownOpen
+                  _isMonthlyChallengeDropdownOpen
                       ? Icons.keyboard_arrow_up
                       : Icons.keyboard_arrow_down,
                   color: const Color(0xFF643FDB),
@@ -1924,7 +1920,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
 
         // Dropdown list (only show when open)
-        if (_isChallengeDropdownOpen) ...[
+        if (_isMonthlyChallengeDropdownOpen) ...[
           SizedBox(height: 8.h),
           Container(
             decoration: BoxDecoration(
@@ -1939,7 +1935,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 return GestureDetector(
                   onTap: () async {
                     setState(() {
-                      _isChallengeDropdownOpen = false;
+                      _isMonthlyChallengeDropdownOpen = false;
                     });
                     if (_selectedMonthlyChallenge != challengeName) {
                       setState(() {

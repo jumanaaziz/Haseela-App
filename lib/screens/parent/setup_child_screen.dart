@@ -158,11 +158,13 @@ class _SetupChildScreenState extends State<SetupChildScreen> {
       // 4️⃣ Save child metadata to Firestore
       final childData = {
         'firstName': firstName,
+        'lastName': '', // Add empty lastName field to match ChildOption model
         'username': username,
         'username_lc': username.toLowerCase(),
         'email': email,
         'pin_hash': pinHash,
         'pin_salt': salt,
+        'pin_display': pin, // Store PIN for parent to view (in real app, consider security implications)
         'createdAt': FieldValue.serverTimestamp(),
         'active': true,
         'role': 'child',

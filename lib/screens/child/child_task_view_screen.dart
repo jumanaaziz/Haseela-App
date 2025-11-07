@@ -9,6 +9,7 @@ import '../services/haseela_service.dart';
 import '../../widgets/custom_bottom_nav.dart'; // adjust the path if it's in another folder
 import 'child_home_screen.dart';
 import 'wishlist_screen.dart';
+import 'leaderboard/leaderboard_screen.dart';
 
 class ChildTaskViewScreen extends StatefulWidget {
   final String parentId;
@@ -82,8 +83,15 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         );
         break;
       case 3:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Leaderboard coming soon')),
+        // Navigate to Leaderboard
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LeaderboardScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
         );
         break;
     }
@@ -284,7 +292,10 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
               .where((t) => t.status.toLowerCase() == 'pending')
               .toList();
           final doneTasks = allTasks
-              .where((t) => t.status.toLowerCase() == 'done')
+               .where((t) => 
+                  t.status.toLowerCase() == 'done' || 
+                  t.status.toLowerCase() == 'rejected')
+              //.where((t) => t.status.toLowerCase() == 'done')
               .toList();
 
           return Column(
@@ -311,10 +322,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
           );
         },
       ),
-      bottomNavigationBar: CustomBottomNavigationBar(
-        currentIndex: 1, // ✅ Tasks tab highlighted
-        onTap: (index) => _onNavTap(context, index),
-      ),
+      // Bottom navigation is handled by ChildMainWrapper
     );
   }
 
@@ -470,10 +478,17 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
     List<Task> completedTasksForEarning,
   ) {
     final totalTasks = allTasks.length;
-    final totalEarned = completedTasksForEarning.fold(
+   /* final totalEarned = completedTasksForEarning.fold(
       0.0,
       (sum, task) => sum + task.allowance,
-    );
+    );*/
+    // Only count approved tasks (status = 'done'), NOT rejected tasks
+   // final totalEarned = completedTasksForEarning
+   final approvedTasks = completedTasksForEarning
+        .where((task) => task.status.toLowerCase() == 'done')
+        //.fold(0.0, (sum, task) => sum + task.allowance);
+        .toList();
+    final totalEarned = approvedTasks.fold(0.0, (sum, task) => sum + task.allowance);
     final childName = _currentChild?.firstName ?? 'Nouf';
 
     return Container(
@@ -569,7 +584,8 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${completedTasks.length}/$totalTasks Tasks',
+                          //'${completedTasks.length}/$totalTasks Tasks',
+                          '${approvedTasks.length}/$totalTasks Tasks',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: MediaQuery.of(context).size.width * 0.05,
@@ -833,19 +849,33 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
   }
 
   Widget _buildTaskCard(Task task) {
+    final isChallenge = task.isChallenge;
+    final cardColor = isChallenge 
+        ? const Color(0xFFFFD700).withOpacity(0.1) // Light gold background
+        : Colors.white;
+    final borderColor = isChallenge
+        ? Colors.amber.shade600 // Gold border
+        : Colors.transparent;
+
     return Container(
       margin: EdgeInsets.only(
         bottom: MediaQuery.of(context).size.height * 0.02,
       ),
       padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.05),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(
           MediaQuery.of(context).size.width * 0.04,
         ),
+        border: Border.all(
+          color: borderColor,
+          width: isChallenge ? 2.0 : 0.0,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: isChallenge
+                ? Colors.amber.withOpacity(0.2) // Gold shadow
+                : Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 10,
             offset: Offset(0, 2),
@@ -855,6 +885,44 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Challenge badge
+          if (isChallenge)
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.amber.shade600,
+                    Colors.amber.shade800,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Challenge Task',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // Header with category icon and title
           Row(
             children: [
@@ -888,7 +956,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                       style: TextStyle(
                         fontSize: MediaQuery.of(context).size.width * 0.045,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF333333),
+                        color: isChallenge 
+                            ? Colors.amber.shade900 
+                            : Color(0xFF333333),
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1061,7 +1131,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   label: Text(
                     'Complete Task',
                     style: TextStyle(
-                      fontSize: MediaQuery.of(context).size.width * 0.04,
+                      fontSize: MediaQuery.of(context).size.width * 0.038,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1090,22 +1160,76 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
   }
 
   Widget _buildPendingTaskCard(Task task) {
+    final isChallenge = task.isChallenge;
+    final cardColor = isChallenge 
+        ? const Color(0xFFFFD700).withOpacity(0.1)
+        : Colors.white;
+    final borderColor = isChallenge
+        ? Colors.amber.shade600
+        : Colors.transparent;
+
     return Container(
       margin: EdgeInsets.only(bottom: 16),
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: borderColor,
+          width: isChallenge ? 2.0 : 0.0,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: isChallenge
+                ? Colors.amber.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 10,
             offset: Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Challenge badge
+          if (isChallenge)
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.amber.shade600,
+                    Colors.amber.shade800,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Challenge Task',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Row(
         children: [
           Container(
             padding: EdgeInsets.all(8),
@@ -1125,7 +1249,9 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF333333),
+                    color: isChallenge 
+                        ? Colors.amber.shade900 
+                        : Color(0xFF333333),
                   ),
                 ),
                 SizedBox(height: 4),
@@ -1178,35 +1304,95 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
             ),
           ],
         ],
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildCompletedTaskCard(Task task) {
+    // Determine status-based colors, icons, and messages
+    final bool isDone = task.status.toLowerCase() == 'done';
+    final bool isRejected = task.status.toLowerCase() == 'rejected';
+    final Color statusColor = isDone 
+        ? Colors.green 
+        : (isRejected ? Colors.red : Colors.grey);
+    final IconData statusIcon = isDone 
+        ? Icons.check_circle 
+        : (isRejected ? Icons.cancel : Icons.help_outline);
+    final String statusMessage = isDone
+        ? 'Approved by parent • +${task.allowance.toStringAsFixed(0)} ﷼'
+        : (isRejected 
+            ? 'Rejected by parent' 
+            : 'Unknown status');
+    final Color cardColor = Colors.white;
+    
     return Container(
       margin: EdgeInsets.only(bottom: 16),
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: task.isChallenge
+                ? Colors.amber.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 10,
             offset: Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Challenge badge
+          if (task.isChallenge)
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.amber.shade600,
+                    Colors.amber.shade800,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Challenge Task',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Row(
         children: [
           Container(
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: statusColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.check_circle, color: Colors.green, size: 24),
+            child: Icon(statusIcon, color: statusColor, size: 24),
           ),
           SizedBox(width: 16),
           Expanded(
@@ -1242,10 +1428,10 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Approved by parent • +${task.allowance.toStringAsFixed(0)} ﷼',
+                  statusMessage,
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.green,
+                    color: statusColor,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1270,6 +1456,8 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
               ),
             ),
           ],
+        ],
+          ),
         ],
       ),
     );
@@ -1486,7 +1674,7 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
         bool? confirmed = await showDialog<bool>(
           context: context,
           builder: (BuildContext context) {
-            return AlertDialog(
+            /*return AlertDialog(
               title: Row(
                 children: [
                   Icon(Icons.photo_camera, color: Color(0xFF643FDB)),
@@ -1563,7 +1751,138 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
                   ),
                   child: Text('Upload & Complete'),
                 ),
-              ],
+              ],*/
+                return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.9,
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Title
+                    Row(
+                      children: [
+                        Icon(Icons.photo_camera, color: Color(0xFF643FDB)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Confirm Photo Upload',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF333333),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16),
+                    
+                    // Content
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Are you sure you want to upload this photo and complete the task?',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Task: ${task.taskName}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF333333),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Allowance: +${task.allowance.toStringAsFixed(0)} ﷼',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green[600],
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            // Image preview
+                            Container(
+                              height: 120,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey[300]!),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(
+                                  File(image.path),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.grey[200],
+                                      child: Icon(Icons.error, color: Colors.red),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                    
+                    // Actions
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop(false);
+                            },
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.of(context).pop(true);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF643FDB),
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: Text(
+                              'Upload & Complete',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 16),
+                        
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
             );
           },
         );
@@ -2077,3 +2396,4 @@ class _ChildTaskViewScreenState extends State<ChildTaskViewScreen> {
     return task.image ?? task.completedImagePath;
   }
 }
+

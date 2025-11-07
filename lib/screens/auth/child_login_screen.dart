@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:haseela_app/screens/child/child_home_screen.dart';
+import '../child_main_wrapper.dart';
 import '../auth_background.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
@@ -97,7 +97,7 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
         return;
       }
 
-      // ✅ SUCCESS: Navigate to child home screen
+      // ✅ SUCCESS: Navigate to child main wrapper (which includes notification initialization)
       _showSnackBar('Login successful!', Colors.green);
 
       if (!mounted) return;
@@ -106,7 +106,7 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
         context,
         MaterialPageRoute(
           builder: (context) =>
-              HomeScreen(parentId: parentId, childId: childId),
+              ChildMainWrapper(parentId: parentId, childId: childId),
         ),
       );
     } catch (e) {

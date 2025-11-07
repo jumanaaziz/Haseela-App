@@ -143,32 +143,66 @@ class HaseelaService {
   }
 
   // Update task status
-  Future<void> updateTaskStatus(
-    String parentId,
-    String childId,
-    String taskId,
-    String status,
-  ) async {
-    try {
-      Map<String, dynamic> updateData = {'status': status};
+// Update task status
+Future<void> updateTaskStatus(
+  String parentId,
+  String childId,
+  String taskId,
+  String status,
+) async {
+  try {
+    DocumentSnapshot taskDoc = await _firestore
+        .collection('Parents')
+        .doc(parentId)
+        .collection('Children')
+        .doc(childId)
+        .collection('Tasks')
+        .doc(taskId)
+        .get();
 
-      if (status == 'completed') {
-        updateData['completedDate'] = Timestamp.now();
-      }
-
-      await _firestore
-          .collection('Parents')
-          .doc(parentId)
-          .collection('Children')
-          .doc(childId)
-          .collection('Tasks')
-          .doc(taskId)
-          .update(updateData);
-    } catch (e) {
-      print('Error updating task status: $e');
-      throw e;
+    if (!taskDoc.exists) {
+      throw Exception('Task not found');
     }
+
+    final taskData = taskDoc.data() as Map<String, dynamic>;
+    final previousStatus = taskData['status'] as String?;
+    final allowance = (taskData['allowance'] ?? 0).toDouble();
+
+    Map<String, dynamic> updateData = {'status': status};
+
+    if (status == 'completed' || status == 'done') {
+      updateData['completedDate'] = Timestamp.now();
+    }
+
+    // Update the task status
+    await _firestore
+        .collection('Parents')
+        .doc(parentId)
+        .collection('Children')
+        .doc(childId)
+        .collection('Tasks')
+        .doc(taskId)
+        .update(updateData);
+
+    // Only add money when task moves to 'done' status
+    // AND it wasn't already 'done' before
+    if (status.toLowerCase() == 'done' && 
+        previousStatus?.toLowerCase() != 'done' && 
+        allowance > 0) {
+      await updateWalletBalance(parentId, childId, allowance);
+    }
+
+    // If task is rejected after being done, deduct the money
+    if (status.toLowerCase() == 'rejected' && 
+        previousStatus?.toLowerCase() == 'done' && 
+        allowance > 0) {
+      await updateWalletBalance(parentId, childId, -allowance);
+    }
+  } catch (e) {
+    print('Error updating task status: $e');
+    throw e;
   }
+}
 
   // Update wallet balance (when task is completed)
   Future<void> updateWalletBalance(
@@ -193,13 +227,15 @@ class HaseelaService {
           double currentTotal = (data['totalBalance'] ?? 0).toDouble();
           double currentSpending = (data['spendingsBalance'] ?? 0).toDouble();
 
-          transaction.update(walletRef, {
-            'totalBalance': currentTotal + amount,
-            'spendingsBalance': currentSpending + amount,
-            'lastUpdated': Timestamp.now(),
-          });
-        }
-      });
+         // ✅ ONLY add to totalBalance (not spendingBalance)
+        transaction.update(walletRef, {
+          'totalBalance': currentTotal + amount,
+          'lastUpdated': Timestamp.now(),
+        });
+      } else {
+        throw Exception('wallet001 document not found for child $childId');
+      }
+    });
     } catch (e) {
       print('Error updating wallet: $e');
       throw e;

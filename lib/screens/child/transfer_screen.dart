@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/wallet.dart';
 import '../../models/transaction.dart';
 import '../services/firebase_service.dart';
+import '../../services/badge_service.dart';
 
 class TransferScreen extends StatefulWidget {
   final Wallet userWallet;
@@ -578,6 +579,14 @@ class _TransferScreenState extends State<TransferScreen> {
         );
 
         widget.onWalletUpdated(updatedWallet);
+
+        // Check Financial Freedom Flyer badge if saving balance >= 100
+        if (newSavingBalance >= 100.0) {
+          BadgeService.checkFinancialFreedomFlyer(
+            widget.parentId,
+            widget.childId,
+          );
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

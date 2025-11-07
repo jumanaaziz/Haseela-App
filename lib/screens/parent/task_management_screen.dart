@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,6 +11,8 @@ import '../../models/child_options.dart';
 import '../../widgets/task_card.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import 'parent_profile_screen.dart';
+import 'parent_leaderboard_screen.dart';
+import '../../services/badge_service.dart';
 
 class TaskManagementScreen extends StatefulWidget {
   const TaskManagementScreen({super.key});
@@ -25,35 +28,105 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
   String selectedUserId = '';
   List<ChildOption> _children = [];
   Map<String, List<Task>> _currentGroupedTasks = {};
+  StreamSubscription<QuerySnapshot>? _childrenSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadChildren();
+    _setupChildrenListener();
   }
 
-  /// ✅ Load children for parent (by UID)
-  Future<void> _loadChildren() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection("Parents")
-          .doc(_uid)
-          .collection("Children")
-          .get();
+  @override
+  void dispose() {
+    _childrenSubscription?.cancel();
+    super.dispose();
+  }
 
-      setState(() {
-        _children = snap.docs
-            .map((doc) => ChildOption.fromFirestore(doc.id, doc.data()))
-            .where((c) => c.firstName.trim().isNotEmpty)
-            .toList();
+  /// ✅ Set up real-time listener for children
+  void _setupChildrenListener() {
+    print('=== SETTING UP REAL-TIME CHILDREN LISTENER FOR TASK PAGE ===');
+    print('Parent UID: $_uid');
 
-        if (_children.isNotEmpty) {
-          selectedUserId = _children.first.id;
-        }
-      });
-    } catch (e) {
-      _toast('Error loading children: $e', ToastificationType.error);
-    }
+    _childrenSubscription?.cancel(); // Cancel existing subscription
+
+    _childrenSubscription = FirebaseFirestore.instance
+        .collection("Parents")
+        .doc(_uid)
+        .collection("Children")
+        .snapshots(includeMetadataChanges: true)
+        .listen(
+          (QuerySnapshot snapshot) {
+            print('=== REAL-TIME UPDATE RECEIVED IN TASK PAGE ===');
+            print('Snapshot size: ${snapshot.docs.length}');
+
+            final allChildren = snapshot.docs
+                .map((doc) {
+                  final childData = doc.data() as Map<String, dynamic>?;
+                  print('Child doc ${doc.id}: data=$childData');
+                  if (childData == null) {
+                    print('⚠️ Child data is null for ${doc.id}');
+                    return null;
+                  }
+                  try {
+                    return ChildOption.fromFirestore(doc.id, childData);
+                  } catch (e) {
+                    print('❌ Error creating ChildOption from ${doc.id}: $e');
+                    return null;
+                  }
+                })
+                .where((c) => c != null)
+                .cast<ChildOption>()
+                .where((c) => c.firstName.trim().isNotEmpty)
+                .toList();
+
+            print('Filtered to ${allChildren.length} children');
+            print(
+              'Children names: ${allChildren.map((c) => c.firstName).toList()}',
+            );
+
+            if (mounted) {
+              setState(() {
+                _children = allChildren;
+
+                // If no child is selected or selected child no longer exists, select first one
+                if (_children.isNotEmpty) {
+                  if (selectedUserId.isEmpty ||
+                      !_children.any((c) => c.id == selectedUserId)) {
+                    selectedUserId = _children.first.id;
+                    print(
+                      'Selected child: ${_children.first.firstName} (${selectedUserId})',
+                    );
+                  }
+                } else {
+                  selectedUserId = '';
+                  print('⚠️ No children found');
+                }
+              });
+              print('=== CHILDREN LIST UPDATED IN TASK PAGE ===');
+              print('New children count: ${_children.length}');
+            } else {
+              print('Widget not mounted, skipping setState');
+            }
+          },
+          onError: (error, stackTrace) {
+            print('❌ Error in children listener (Task Page): $error');
+            print('Stack trace: $stackTrace');
+            if (mounted) {
+              _toast(
+                'Error loading children: $error',
+                ToastificationType.error,
+              );
+              // Try to re-setup listener after error
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted) {
+                  _setupChildrenListener();
+                }
+              });
+            }
+          },
+        );
+
+    print('✅ Children listener set up successfully for task page');
   }
 
   /// ✅ Delete task (by UID + selected child)
@@ -122,7 +195,10 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
         _toast('Wishlist coming soon', ToastificationType.info);
         break;
       case 3:
-        _toast('Leaderboard coming soon', ToastificationType.info);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ParentLeaderboardScreen()),
+        );
         break;
     }
   }
@@ -703,6 +779,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
                                 : null,
                             assignedBy: assignedByRef,
                             completedImagePath: data['completedImagePath'],
+                            isChallenge: data['isChallenge'] ?? false,
                           );
                         }).toList();
 
@@ -1616,6 +1693,9 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
       );
 
       print('✅ Task approval completed - Total Balance updated');
+
+      // Step 7️⃣ Check badges after task approval
+      BadgeService.checkTenaciousTaskmaster(parentId, widget.childId);
     } catch (e, stackTrace) {
       // Close loading dialog if open
       if (Navigator.canPop(context)) Navigator.pop(context);

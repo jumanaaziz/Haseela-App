@@ -29,11 +29,13 @@ class ChildOption {
 
     return ChildOption(
       id: id,
-      firstName: fn,
-      lastName: ln,
+      firstName: fn.trim(),
+      lastName: ln.trim(),
       avatar: (av == null || av.isEmpty) ? null : av, // null if empty
       email: _trimOrNull(data['email'] as String?),
-      username: _trimOrNull(data['username'] as String?) ?? '', // Username is mandatory, fallback to empty string
+      username:
+          _trimOrNull(data['username'] as String?) ??
+          '', // Username is mandatory, fallback to empty string
     );
   }
 

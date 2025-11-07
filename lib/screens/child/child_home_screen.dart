@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:io';
+import 'dart:convert';
 import '../../models/user_profile.dart';
 import '../../models/wallet.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,15 +10,14 @@ import 'spending_wallet_screen.dart';
 import 'saving_wallet_screen.dart';
 import 'transfer_screen.dart';
 import '../../widgets/custom_bottom_nav.dart';
-import '../../widgets/custom_bottom_nav.dart';
 import 'package:haseela_app/screens/child/child_task_view_screen.dart';
 import 'package:haseela_app/screens/child/wishlist_screen.dart';
+import 'package:haseela_app/screens/child/haseela_lessons_overview_screen.dart';
+import 'package:haseela_app/screens/child/leaderboard/leaderboard_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:haseela_app/screens/auth_wrapper.dart';
 import 'package:http/http.dart' as http; // ✅ Add this line
 import 'auto_currency_scanner_screen.dart'; // Import the new scanner
-import 'dart:convert';
-import 'haseela_lessons_overview_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String parentId;
@@ -103,28 +103,50 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showErrorSnackBar() {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Unable to load data. Please check your connection and try again.',
-            style: TextStyle(fontSize: 14.sp),
+  void _onNavTap(BuildContext context, int index) {
+    if (index == _navBarIndex) return;
+
+    setState(() {
+      _navBarIndex = index;
+    });
+
+    switch (index) {
+      case 0:
+        break;
+      case 1:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChildTaskViewScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
           ),
-          backgroundColor: Colors.red.shade600,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'Retry',
-            textColor: Colors.white,
-            onPressed: () {
-              setState(() {
-                hasRetried = false;
-              });
-              _loadData();
-            },
+        );
+        break;
+      case 2:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WishlistScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
           ),
-        ),
-      );
+        );
+        break;
+      case 3:
+        // Navigate to Leaderboard
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LeaderboardScreen(
+              parentId: widget.parentId,
+              childId: widget.childId,
+            ),
+          ),
+        );
+        break;
     }
   }
 
@@ -203,46 +225,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print('❌ Error fetching child profile: $e');
       rethrow; // Re-throw to trigger retry logic
-    }
-  }
-
-  void _onNavTap(BuildContext context, int index) {
-    if (index == _navBarIndex) return;
-
-    setState(() {
-      _navBarIndex = index;
-    });
-
-    switch (index) {
-      case 0:
-        break;
-      case 1:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChildTaskViewScreen(
-              parentId: widget.parentId,
-              childId: widget.childId,
-            ),
-          ),
-        );
-        break;
-      case 2:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => WishlistScreen(
-              parentId: widget.parentId,
-              childId: widget.childId,
-            ),
-          ),
-        );
-        break;
-      case 3:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Leaderboard coming soon')),
-        );
-        break;
     }
   }
 
@@ -331,12 +313,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: CustomBottomNavigationBar(
-        currentIndex: 0,
-        onTap: (index) {
-          _onNavTap(context, index);
-        },
-      ),
+      // Bottom navigation is handled by ChildMainWrapper
     );
   }
 
@@ -355,6 +332,25 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF643FDB),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          errorMessage ?? 'An error occurred. Please try again.',
+          style: TextStyle(
+            fontSize: 14.sp,
+            color: Colors.white,
+            fontFamily: 'SF Pro Text',
+          ),
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
       ),
     );
   }

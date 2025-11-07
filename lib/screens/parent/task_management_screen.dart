@@ -1668,9 +1668,11 @@ class _TaskDetailsBottomSheetState extends State<TaskDetailsBottomSheet>
         }
 
         // Mark task as done
+        // NOTE: Do NOT update completedDate here - it should already be set when child completed the task
+        // We want to preserve the original completion time, not the approval time
         tx.update(taskRef, {
           'status': 'done',
-          'completedDate': FieldValue.serverTimestamp(),
+          // completedDate is NOT updated here - it preserves the original completion time
         });
 
         print('✅ Transaction completed successfully');

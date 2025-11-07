@@ -170,7 +170,10 @@ Future<void> updateTaskStatus(
 
     Map<String, dynamic> updateData = {'status': status};
 
-    if (status == 'completed' || status == 'done') {
+    // Only set completedDate if it doesn't already exist
+    // This preserves the original completion time set by the child, not the approval time
+    if ((status == 'completed' || status == 'done') && 
+        taskData['completedDate'] == null) {
       updateData['completedDate'] = Timestamp.now();
     }
 

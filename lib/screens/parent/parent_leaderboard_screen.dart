@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import 'parent_profile_screen.dart';
 import 'task_management_screen.dart';
+import 'parent_wishlist_screen.dart';
 
 class ParentLeaderboardScreen extends StatefulWidget {
   const ParentLeaderboardScreen({super.key});
@@ -243,19 +244,17 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
         );
       }
 
-      // Convert to list and sort
-      final entries = entriesMap.values.toList();
+      // Convert to list and separate into two groups:
+      // 1. Children with completed tasks (for top 3)
+      // 2. All children (for the full list below)
+      final allEntries = entriesMap.values.toList();
+      final entriesWithTasks = allEntries.where((e) => e.completedCount > 0).toList();
+      final entriesWithZeroTasks = allEntries.where((e) => e.completedCount == 0).toList();
       
-      // Check if all children have 0 tasks - if so, sort alphabetically
-      final allHaveZeroTasks = entries.every((e) => e.completedCount == 0);
-      
-      if (allHaveZeroTasks) {
-        // When all have 0 tasks, sort alphabetically by name
-        entries.sort((a, b) => a.childName.toLowerCase().compareTo(b.childName.toLowerCase()));
-      } else {
-        // When some have tasks, sort by count first, then by completion time (earliest = higher rank)
-        // Ranking is based on when child completed (completedDate), NOT when parent approved
-        entries.sort((a, b) {
+      // Sort children with tasks by count first, then by completion time (earliest = higher rank)
+      // Ranking is based on when child completed (completedDate), NOT when parent approved
+      if (entriesWithTasks.isNotEmpty) {
+        entriesWithTasks.sort((a, b) {
           // First sort by count (more completions = higher rank)
           if (b.completedCount != a.completedCount) {
             return b.completedCount.compareTo(a.completedCount);
@@ -265,11 +264,17 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
           return a.earliestCompletion.compareTo(b.earliestCompletion);
         });
       }
+      
+      // Sort children with 0 tasks alphabetically
+      entriesWithZeroTasks.sort((a, b) => a.childName.toLowerCase().compareTo(b.childName.toLowerCase()));
+      
+      // Combine: entries with tasks first (for top 3), then entries with 0 tasks (for list)
+      final sortedEntries = [...entriesWithTasks, ...entriesWithZeroTasks];
 
-      print('✅ Weekly leaderboard loaded: ${entries.length} entries');
+      print('✅ Weekly leaderboard loaded: ${sortedEntries.length} entries (${entriesWithTasks.length} with tasks, ${entriesWithZeroTasks.length} with 0 tasks)');
 
       setState(() {
-        _weeklyEntries = entries;
+        _weeklyEntries = sortedEntries;
         _isLoadingWeekly = false;
       });
     } catch (e) {
@@ -442,19 +447,17 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
         );
       }
 
-      // Convert to list and sort
-      final entries = entriesMap.values.toList();
+      // Convert to list and separate into two groups:
+      // 1. Children with completed tasks (for top 3)
+      // 2. All children (for the full list below)
+      final allEntries = entriesMap.values.toList();
+      final entriesWithTasks = allEntries.where((e) => e.completedCount > 0).toList();
+      final entriesWithZeroTasks = allEntries.where((e) => e.completedCount == 0).toList();
       
-      // Check if all children have 0 tasks - if so, sort alphabetically
-      final allHaveZeroTasks = entries.every((e) => e.completedCount == 0);
-      
-      if (allHaveZeroTasks) {
-        // When all have 0 tasks, sort alphabetically by name
-        entries.sort((a, b) => a.childName.toLowerCase().compareTo(b.childName.toLowerCase()));
-      } else {
-        // When some have tasks, sort by count first, then by completion time (earliest = higher rank)
-        // Ranking is based on when child completed (completedDate), NOT when parent approved
-        entries.sort((a, b) {
+      // Sort children with tasks by count first, then by completion time (earliest = higher rank)
+      // Ranking is based on when child completed (completedDate), NOT when parent approved
+      if (entriesWithTasks.isNotEmpty) {
+        entriesWithTasks.sort((a, b) {
           // First sort by count (more completions = higher rank)
           if (b.completedCount != a.completedCount) {
             return b.completedCount.compareTo(a.completedCount);
@@ -464,9 +467,17 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
           return a.earliestCompletion.compareTo(b.earliestCompletion);
         });
       }
+      
+      // Sort children with 0 tasks alphabetically
+      entriesWithZeroTasks.sort((a, b) => a.childName.toLowerCase().compareTo(b.childName.toLowerCase()));
+      
+      // Combine: entries with tasks first (for top 3), then entries with 0 tasks (for list)
+      final sortedEntries = [...entriesWithTasks, ...entriesWithZeroTasks];
+
+      print('✅ Monthly leaderboard loaded: ${sortedEntries.length} entries (${entriesWithTasks.length} with tasks, ${entriesWithZeroTasks.length} with 0 tasks)');
 
       setState(() {
-        _monthlyEntries = entries;
+        _monthlyEntries = sortedEntries;
         _isLoadingMonthly = false;
       });
     } catch (e) {
@@ -493,10 +504,12 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
         );
         break;
       case 2:
-        // Wishlist - placeholder
-        ScaffoldMessenger.of(
+         Navigator.pushReplacement(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Wishlist coming soon')));
+          MaterialPageRoute(
+            builder: (_) => ParentWishlistScreen(parentId: _uid),
+          ),
+        );
         break;
       case 3:
         // Already on Leaderboard
@@ -679,17 +692,32 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
         // Don't show "no completions" message here - if challenge exists, show children with 0 tasks
         // The "no challenge task" message is already handled by the FutureBuilder above
 
+        // Separate entries: those with tasks (for top 3) and all entries (for list)
+        final entriesWithTasks = _weeklyEntries.where((e) => e.completedCount > 0).toList();
+        final allEntries = _weeklyEntries; // All entries for the list below
+        
         return Padding(
           padding: EdgeInsets.symmetric(horizontal: 20.w),
           child: Column(
             children: [
-              _buildTopThreeLeaderboard(_weeklyEntries),
-              if (_weeklyEntries.length > 3) ...[
+              // Top 3: Only show children who have completed tasks
+              _buildTopThreeLeaderboard(entriesWithTasks),
+              // List below: Show all remaining children (those not in top 3)
+              if (allEntries.length > 3 || entriesWithTasks.isEmpty) ...[
                 SizedBox(height: 24.h),
-                ...List.generate(_weeklyEntries.length - 3, (index) {
-                  final entry = _weeklyEntries[index + 3];
-                  return _buildLeaderboardItem(entry: entry, rank: index + 4);
-                }),
+                // If no one has completed tasks, show all children alphabetically
+                if (entriesWithTasks.isEmpty) ...[
+                  ...List.generate(allEntries.length, (index) {
+                    final entry = allEntries[index];
+                    return _buildLeaderboardItem(entry: entry, rank: index + 1);
+                  }),
+                ] else ...[
+                  // Show remaining children (those not in top 3)
+                  ...List.generate(allEntries.length - 3, (index) {
+                    final entry = allEntries[index + 3];
+                    return _buildLeaderboardItem(entry: entry, rank: index + 4);
+                  }),
+                ],
               ],
             ],
           ),
@@ -874,19 +902,39 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                 ],
               ),
             )
-          else
-            Column(
-              children: [
-                _buildTopThreeLeaderboard(_monthlyEntries),
-                if (_monthlyEntries.length > 3) ...[
-                  SizedBox(height: 24.h),
-                  ...List.generate(_monthlyEntries.length - 3, (index) {
-                    final entry = _monthlyEntries[index + 3];
-                    return _buildLeaderboardItem(entry: entry, rank: index + 4);
-                  }),
-                ],
-              ],
+          else ...[
+            // Separate entries: those with tasks (for top 3) and all entries (for list)
+            Builder(
+              builder: (context) {
+                final entriesWithTasks = _monthlyEntries.where((e) => e.completedCount > 0).toList();
+                final allEntries = _monthlyEntries; // All entries for the list below
+                
+                return Column(
+                  children: [
+                    // Top 3: Only show children who have completed tasks
+                    _buildTopThreeLeaderboard(entriesWithTasks),
+                    // List below: Show all remaining children (those not in top 3)
+                    if (allEntries.length > 3 || entriesWithTasks.isEmpty) ...[
+                      SizedBox(height: 24.h),
+                      // If no one has completed tasks, show all children alphabetically
+                      if (entriesWithTasks.isEmpty) ...[
+                        ...List.generate(allEntries.length, (index) {
+                          final entry = allEntries[index];
+                          return _buildLeaderboardItem(entry: entry, rank: index + 1);
+                        }),
+                      ] else ...[
+                        // Show remaining children (those not in top 3)
+                        ...List.generate(allEntries.length - 3, (index) {
+                          final entry = allEntries[index + 3];
+                          return _buildLeaderboardItem(entry: entry, rank: index + 4);
+                        }),
+                      ],
+                    ],
+                  ],
+                );
+              },
             ),
+          ],
         ],
       ),
     );
@@ -961,25 +1009,25 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                       width: 40.w,
                       height: 40.w,
                       decoration: BoxDecoration(
-                        color: second != null ? const Color(0xFFC0C0C0) : Colors.grey[200]!, // Silver color
+                        color: const Color(0xFFC0C0C0), // Always silver color, even when empty
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           // LED glow effect - multiple layers for depth
                           BoxShadow(
-                            color: (second != null ? const Color(0xFFC0C0C0) : Colors.grey).withOpacity(0.8),
+                            color: const Color(0xFFC0C0C0).withOpacity(0.8),
                             blurRadius: 15,
                             spreadRadius: 2,
                             offset: Offset(0, 0),
                           ),
                           BoxShadow(
-                            color: (second != null ? const Color(0xFFC0C0C0) : Colors.grey).withOpacity(0.6),
+                            color: const Color(0xFFC0C0C0).withOpacity(0.6),
                             blurRadius: 10,
                             spreadRadius: 1,
                             offset: Offset(0, 0),
                           ),
                           BoxShadow(
-                            color: (second != null ? const Color(0xFFC0C0C0) : Colors.grey).withOpacity(0.4),
+                            color: const Color(0xFFC0C0C0).withOpacity(0.4),
                             blurRadius: 5,
                             offset: Offset(0, 2),
                           ),
@@ -1032,25 +1080,25 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                       width: 48.w,
                       height: 48.w,
                       decoration: BoxDecoration(
-                        color: first != null ? Colors.yellow[700]! : Colors.grey[200]!,
+                        color: first != null ? Colors.yellow[700]! : Colors.grey[300]!,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           // LED glow effect - multiple layers for depth
                           BoxShadow(
-                            color: (first != null ? Colors.yellow[700]! : Colors.grey).withOpacity(0.9),
+                            color: (first != null ? Colors.yellow[700]! : Colors.grey[400]!).withOpacity(0.9),
                             blurRadius: 20,
                             spreadRadius: 3,
                             offset: Offset(0, 0),
                           ),
                           BoxShadow(
-                            color: (first != null ? Colors.yellow[600]! : Colors.grey).withOpacity(0.7),
+                            color: (first != null ? Colors.yellow[600]! : Colors.grey[300]!).withOpacity(0.7),
                             blurRadius: 15,
                             spreadRadius: 2,
                             offset: Offset(0, 0),
                           ),
                           BoxShadow(
-                            color: (first != null ? Colors.yellow : Colors.grey).withOpacity(0.5),
+                            color: (first != null ? Colors.yellow : Colors.grey[200]!).withOpacity(0.5),
                             blurRadius: 8,
                             offset: Offset(0, 2),
                           ),
@@ -1101,25 +1149,25 @@ class _ParentLeaderboardScreenState extends State<ParentLeaderboardScreen> {
                       width: 40.w,
                       height: 40.w,
                       decoration: BoxDecoration(
-                        color: third != null ? const Color(0xFFCD7F32) : Colors.grey[200]!, // Bronze color
+                        color: const Color(0xFFCD7F32), // Always bronze color, even when empty
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           // LED glow effect - multiple layers for depth
                           BoxShadow(
-                            color: (third != null ? const Color(0xFFCD7F32) : Colors.grey).withOpacity(0.8),
+                            color: const Color(0xFFCD7F32).withOpacity(0.8),
                             blurRadius: 15,
                             spreadRadius: 2,
                             offset: Offset(0, 0),
                           ),
                           BoxShadow(
-                            color: (third != null ? const Color(0xFFCD7F32) : Colors.grey).withOpacity(0.6),
+                            color: const Color(0xFFCD7F32).withOpacity(0.6),
                             blurRadius: 10,
                             spreadRadius: 1,
                             offset: Offset(0, 0),
                           ),
                           BoxShadow(
-                            color: (third != null ? const Color(0xFFCD7F32) : Colors.grey).withOpacity(0.4),
+                            color: const Color(0xFFCD7F32).withOpacity(0.4),
                             blurRadius: 5,
                             offset: Offset(0, 2),
                           ),
